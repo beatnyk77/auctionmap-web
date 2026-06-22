@@ -9,7 +9,7 @@ import { FilterBar } from "@/components/filters/FilterBar";
 import { SaveSearchButton } from "@/components/workflow/SaveSearchButton";
 import { buildListingsQuery } from "@/lib/filters";
 import { hasUrlFilters, parseMapUrlState, serializeMapUrlState } from "@/lib/map/url-state";
-import { DEFAULT_ZOOM, INDIA_CENTER } from "@/lib/map/constants";
+import { CITY_CENTERS, DEFAULT_ZOOM, INDIA_CENTER } from "@/lib/map/constants";
 import type { Bbox, ListingFilters, ListingPublic } from "@/lib/types";
 import { MapControls } from "./MapControls";
 import { MapErrorBoundary } from "./MapErrorBoundary";
@@ -30,7 +30,8 @@ interface MapExplorerProps {
   isAuthenticated?: boolean;
 }
 
-function scopeLabel(scope: ViewScope): string {
+function scopeLabel(scope: ViewScope, city?: string): string {
+  if (city) return `In ${city}`;
   switch (scope) {
     case "all":
       return "All listings";
@@ -117,13 +118,25 @@ export function MapExplorer({
 
   useEffect(() => {
     if (!effectiveBbox) return;
-    if (skipInitialFetchRef.current) {
+    if (skipInitialFetchRef.current && !filters.city) {
       skipInitialFetchRef.current = false;
       return;
     }
+    if (skipInitialFetchRef.current) skipInitialFetchRef.current = false;
     const timer = setTimeout(fetchListings, 300);
     return () => clearTimeout(timer);
   }, [effectiveBbox, filters, fetchListings]);
+
+  useEffect(() => {
+    if (!filters.city) return;
+    const match = Object.entries(CITY_CENTERS).find(
+      ([name]) => name.toLowerCase() === filters.city!.toLowerCase(),
+    );
+    if (!match) return;
+    const [lng, lat] = match[1];
+    mapRef.current?.flyTo(lng, lat, 11);
+    urlViewportRef.current = { center: [lng, lat], zoom: 11 };
+  }, [filters.city]);
 
   useEffect(() => {
     if (urlSyncTimerRef.current) clearTimeout(urlSyncTimerRef.current);
@@ -274,7 +287,9 @@ export function MapExplorer({
               <h2 className="text-sm font-semibold text-slate-900">
                 {sorted.length} listings
               </h2>
-              <p className="text-[11px] text-slate-500">{scopeLabel(viewScope)}</p>
+              <p className="text-[11px] text-slate-500">
+                {scopeLabel(viewScope, filters.city)}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <SaveSearchButton filters={savedFilters} isAuthenticated={isAuthenticated} />

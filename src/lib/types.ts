@@ -47,6 +47,7 @@ export interface Bbox {
 
 export interface ListingFilters {
   state?: string;
+  city?: string;
   propertyType?: string;
   auctionType?: string;
   riskTier?: RiskTier;

@@ -14,6 +14,12 @@ function applyClientFilters(
   filters: ListingFilters,
 ): ListingPublic[] {
   return listings.filter((l) => {
+    if (filters.city) {
+      const needle = filters.city.toLowerCase();
+      const city = (l.city ?? "").toLowerCase();
+      const locality = (l.locality ?? "").toLowerCase();
+      if (!city.includes(needle) && !locality.includes(needle)) return false;
+    }
     if (filters.riskTier && l.risk_tier !== filters.riskTier) return false;
     if (filters.auctionType && l.auction_type !== filters.auctionType) return false;
     if (filters.minPrice != null && (l.reserve_price_lakhs ?? 0) < filters.minPrice)
@@ -77,6 +83,7 @@ export async function fetchListingsInBbox(
     filter_max_price: mergedFilters.maxPrice ?? null,
     filter_min_auction_date: mergedFilters.minAuctionDate ?? null,
     filter_max_auction_date: mergedFilters.maxAuctionDate ?? null,
+    filter_city: mergedFilters.city ?? null,
     row_limit: limit,
   });
 

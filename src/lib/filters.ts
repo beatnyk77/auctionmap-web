@@ -12,6 +12,7 @@ export function buildListingsQuery(
     );
   }
   if (filters.state) params.set("state", filters.state);
+  if (filters.city) params.set("city", filters.city);
   if (filters.propertyType) params.set("type", filters.propertyType);
   if (filters.auctionType) params.set("auction_type", filters.auctionType);
   if (filters.riskTier) params.set("risk", filters.riskTier);

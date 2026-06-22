@@ -22,6 +22,7 @@ export function parseMapUrlState(params: URLSearchParams): MapUrlState {
   const risk = params.get("risk");
   const filters: ListingFilters = {
     state: params.get("state") ?? undefined,
+    city: params.get("city") ?? undefined,
     propertyType: params.get("type") ?? undefined,
     auctionType: params.get("auction_type") ?? undefined,
     riskTier: risk && RISK_TIERS.has(risk as RiskTier) ? (risk as RiskTier) : undefined,
@@ -53,6 +54,7 @@ export function serializeMapUrlState(state: MapUrlState): string {
   const { filters, bbox, center, zoom, activeId } = state;
 
   if (filters.state) params.set("state", filters.state);
+  if (filters.city) params.set("city", filters.city);
   if (filters.propertyType) params.set("type", filters.propertyType);
   if (filters.auctionType) params.set("auction_type", filters.auctionType);
   if (filters.riskTier) params.set("risk", filters.riskTier);
@@ -82,6 +84,7 @@ export function serializeMapUrlState(state: MapUrlState): string {
 export function hasUrlFilters(params: URLSearchParams): boolean {
   const keys = [
     "state",
+    "city",
     "type",
     "auction_type",
     "risk",

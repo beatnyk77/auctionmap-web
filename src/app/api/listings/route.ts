@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
 
     const filters: ListingFilters = {
       state: searchParams.get("state") ?? undefined,
+      city: searchParams.get("city") ?? undefined,
       propertyType: searchParams.get("type") ?? undefined,
       auctionType: searchParams.get("auction_type") ?? undefined,
       riskTier: (searchParams.get("risk") as RiskTier) ?? undefined,
