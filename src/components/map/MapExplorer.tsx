@@ -16,19 +16,29 @@ import { MapErrorBoundary } from "./MapErrorBoundary";
 import { MapGeocodeSearch, type GeocodeResult } from "./MapGeocodeSearch";
 import { MapLegend } from "./MapLegend";
 import { MapSkeleton } from "./MapSkeleton";
+import type { MapViewHandle } from "./MapView";
 
 const MapView = dynamic(() => import("./MapView").then((m) => m.MapView), {
   ssr: false,
   loading: () => <MapSkeleton />,
 });
 
+type ViewScope = "all" | "viewport" | "drawn";
+
 interface MapExplorerProps {
   initialListings: ListingPublic[];
   isAuthenticated?: boolean;
 }
 
-function bboxCenter(bbox: Bbox): [number, number] {
-  return [(bbox.minLng + bbox.maxLng) / 2, (bbox.minLat + bbox.maxLat) / 2];
+function scopeLabel(scope: ViewScope): string {
+  switch (scope) {
+    case "all":
+      return "All listings";
+    case "drawn":
+      return "In drawn area";
+    default:
+      return "In map view";
+  }
 }
 
 export function MapExplorer({
@@ -50,12 +60,17 @@ export function MapExplorer({
     [],
   );
   const urlViewportRef = useRef(mapBootstrap);
+  const mapRef = useRef<MapViewHandle>(null);
 
   const [listings, setListings] = useState(initialListings);
   const [filters, setFilters] = useState<ListingFilters>(urlParsed.filters);
   const [bbox, setBbox] = useState<Bbox | null>(urlParsed.bbox);
   const [drawnBbox, setDrawnBbox] = useState<Bbox | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(urlParsed.activeId);
+  const [selectedId, setSelectedId] = useState<string | null>(urlParsed.activeId);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [viewScope, setViewScope] = useState<ViewScope>(
+    urlParsed.bbox ? "viewport" : "all",
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [heatmapOn, setHeatmapOn] = useState(false);
@@ -75,6 +90,7 @@ export function MapExplorer({
   const urlSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSyncedUrlRef = useRef<string>("");
 
+  const activeId = hoveredId ?? selectedId;
   const effectiveBbox = drawnBbox ?? bbox;
 
   const fetchListings = useCallback(async () => {
@@ -90,13 +106,14 @@ export function MapExplorer({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Failed to load listings");
       setListings(json.listings ?? []);
+      setViewScope(drawnBbox ? "drawn" : "viewport");
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") return;
       setError(e instanceof Error ? e.message : "Failed to load listings");
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [effectiveBbox, filters]);
+  }, [drawnBbox, effectiveBbox, filters]);
 
   useEffect(() => {
     if (!effectiveBbox) return;
@@ -111,13 +128,13 @@ export function MapExplorer({
   useEffect(() => {
     if (urlSyncTimerRef.current) clearTimeout(urlSyncTimerRef.current);
     urlSyncTimerRef.current = setTimeout(() => {
-      const center = effectiveBbox ? bboxCenter(effectiveBbox) : urlViewportRef.current.center;
+      const center = urlViewportRef.current.center;
       const qs = serializeMapUrlState({
         filters,
         bbox: effectiveBbox,
         center,
         zoom: urlViewportRef.current.zoom,
-        activeId,
+        activeId: selectedId,
       });
       const next = qs ? `${pathname}?${qs}` : pathname;
       if (next === lastSyncedUrlRef.current) return;
@@ -127,7 +144,7 @@ export function MapExplorer({
     return () => {
       if (urlSyncTimerRef.current) clearTimeout(urlSyncTimerRef.current);
     };
-  }, [filters, effectiveBbox, activeId, pathname, router]);
+  }, [filters, effectiveBbox, selectedId, pathname, router]);
 
   const sorted = useMemo(
     () =>
@@ -148,19 +165,23 @@ export function MapExplorer({
 
   const handleMarkerClick = useCallback(
     (listing: ListingPublic) => {
-      setActiveId(listing.property_id);
+      setSelectedId(listing.property_id);
       scrollToCard(listing.property_id);
     },
     [scrollToCard],
   );
 
   const handleListingHover = useCallback((listing: ListingPublic | null) => {
-    if (listing) setActiveId(listing.property_id);
+    setHoveredId(listing?.property_id ?? null);
   }, []);
 
-  const handleCardHover = useCallback((listing: ListingPublic) => {
-    setActiveId(listing.property_id);
-  }, []);
+  const handleCardHover = useCallback(
+    (listing: ListingPublic) => {
+      setHoveredId(listing.property_id);
+      mapRef.current?.flyToListing(listing);
+    },
+    [],
+  );
 
   const handleBboxChange = useCallback((next: Bbox) => {
     setBbox((prev) => {
@@ -175,10 +196,22 @@ export function MapExplorer({
     });
   }, []);
 
+  const handleViewportChange = useCallback((center: [number, number], zoom: number) => {
+    urlViewportRef.current = { center, zoom };
+  }, []);
+
   const handleDrawComplete = useCallback((next: Bbox) => {
     setDrawnBbox(next);
     setDrawMode(false);
     setBbox(next);
+    setViewScope("drawn");
+  }, []);
+
+  const handleClearDraw = useCallback(() => {
+    setDrawnBbox(null);
+    setDrawMode(false);
+    mapRef.current?.refreshViewportBbox();
+    setViewScope("viewport");
   }, []);
 
   const handleGeocodeSelect = useCallback((result: GeocodeResult) => {
@@ -205,18 +238,17 @@ export function MapExplorer({
             onToggleHeatmap={() => setHeatmapOn((v) => !v)}
             onToggleDraw={() => setDrawMode((v) => !v)}
             onFitResults={() => setFitRequest((n) => n + 1)}
-            onClearDraw={() => {
-              setDrawnBbox(null);
-              setDrawMode(false);
-            }}
+            onClearDraw={handleClearDraw}
             hasDrawnArea={drawnBbox != null}
           />
           <MapLegend />
           <MapView
+            ref={mapRef}
             listings={listings}
             activeId={activeId}
             bootstrap={mapBootstrap}
             onBboxChange={handleBboxChange}
+            onViewportChange={handleViewportChange}
             onMarkerClick={handleMarkerClick}
             onListingHover={handleListingHover}
             drawMode={drawMode}
@@ -228,7 +260,7 @@ export function MapExplorer({
           />
         </MapErrorBoundary>
         {loading && (
-          <div className="absolute left-3 top-14 flex items-center gap-2 rounded-lg bg-white/95 px-3 py-2 text-xs text-slate-600 shadow-sm">
+          <div className="absolute left-3 top-[4.5rem] flex items-center gap-2 rounded-lg bg-white/95 px-3 py-2 text-xs text-slate-600 shadow-sm">
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
             Updating…
           </div>
@@ -238,9 +270,12 @@ export function MapExplorer({
       <aside className="flex w-full flex-col border-t border-slate-200 bg-slate-50 lg:w-[380px] lg:border-l lg:border-t-0">
         <div className="border-b border-slate-200 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-slate-900">
-              {sorted.length} listings
-            </h2>
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">
+                {sorted.length} listings
+              </h2>
+              <p className="text-[11px] text-slate-500">{scopeLabel(viewScope)}</p>
+            </div>
             <div className="flex items-center gap-2">
               <SaveSearchButton filters={savedFilters} isAuthenticated={isAuthenticated} />
               <p className="hidden text-[11px] text-slate-500 sm:block">Updated daily 6 AM IST</p>
@@ -255,7 +290,7 @@ export function MapExplorer({
           )}
           {!error && sorted.length === 0 && !loading && (
             <p className="px-2 py-8 text-center text-sm text-slate-500">
-              No map-ready listings in this area yet. Run the pipeline to populate data.
+              No map-ready listings in this area yet. Pan the map or clear filters to see more.
             </p>
           )}
           {sorted.map((listing) => (

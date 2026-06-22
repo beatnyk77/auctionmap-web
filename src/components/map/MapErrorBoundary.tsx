@@ -8,12 +8,13 @@ interface Props {
 
 interface State {
   hasError: boolean;
+  remountKey: number;
 }
 
 export class MapErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false };
+  state: State = { hasError: false, remountKey: 0 };
 
-  static getDerivedStateFromError(): State {
+  static getDerivedStateFromError(): Partial<State> {
     return { hasError: true };
   }
 
@@ -27,7 +28,12 @@ export class MapErrorBoundary extends Component<Props, State> {
           </p>
           <button
             type="button"
-            onClick={() => this.setState({ hasError: false })}
+            onClick={() =>
+              this.setState((s) => ({
+                hasError: false,
+                remountKey: s.remountKey + 1,
+              }))
+            }
             className="mt-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800"
           >
             Retry
@@ -36,6 +42,6 @@ export class MapErrorBoundary extends Component<Props, State> {
       );
     }
 
-    return this.props.children;
+    return <div key={this.state.remountKey} className="h-full w-full">{this.props.children}</div>;
   }
 }

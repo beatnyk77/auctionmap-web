@@ -25,7 +25,7 @@ import {
 } from "@/lib/map/constants";
 import { bboxToPolygon, listingsBbox, toGeoJson } from "@/lib/map/geojson";
 import type { Bbox, ListingPublic } from "@/lib/types";
-import { formatLakhs } from "@/lib/utils";
+import { escapeHtml, formatLakhs } from "@/lib/utils";
 import {
   addListingsLayers,
   clusterCoordsFromEvent,
@@ -37,12 +37,15 @@ export interface MapViewHandle {
   flyToListing: (listing: ListingPublic) => void;
   fitToListings: (listings: ListingPublic[]) => void;
   flyTo: (lng: number, lat: number, zoom?: number) => void;
+  /** Re-emit bbox from current map bounds (e.g. after clearing a drawn area). */
+  refreshViewportBbox: () => void;
 }
 
 interface MapViewProps {
   listings: ListingPublic[];
   activeId?: string | null;
   onBboxChange?: (bbox: Bbox) => void;
+  onViewportChange?: (center: [number, number], zoom: number) => void;
   onMarkerClick?: (listing: ListingPublic) => void;
   onListingHover?: (listing: ListingPublic | null) => void;
   drawMode?: boolean;
@@ -56,9 +59,9 @@ interface MapViewProps {
 }
 
 function listingPopupHtml(feature: maplibregl.MapGeoJSONFeature): string {
-  const name = feature.properties?.display_name ?? "Listing";
-  const tier = feature.properties?.risk_tier ?? "Unscored";
-  const price = formatLakhs(feature.properties?.reserve_price_lakhs);
+  const name = escapeHtml(String(feature.properties?.display_name ?? "Listing"));
+  const tier = escapeHtml(String(feature.properties?.risk_tier ?? "Unscored"));
+  const price = escapeHtml(formatLakhs(feature.properties?.reserve_price_lakhs));
   return `<div class="map-popup">
     <p class="map-popup-title">${name}</p>
     <p class="map-popup-meta">${tier} · ${price}</p>
@@ -104,6 +107,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     listings,
     activeId,
     onBboxChange,
+    onViewportChange,
     onMarkerClick,
     onListingHover,
     drawMode = false,
@@ -126,12 +130,15 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   const drawMoveHandlerRef = useRef<((e: maplibregl.MapMouseEvent) => void) | null>(null);
 
   const onBboxChangeRef = useRef(onBboxChange);
+  const onViewportChangeRef = useRef(onViewportChange);
   const onMarkerClickRef = useRef(onMarkerClick);
+  const emitBboxRef = useRef<(() => void) | null>(null);
   const onListingHoverRef = useRef(onListingHover);
   const onDrawCompleteRef = useRef(onDrawComplete);
   const drawModeRef = useRef(drawMode);
 
   onBboxChangeRef.current = onBboxChange;
+  onViewportChangeRef.current = onViewportChange;
   onMarkerClickRef.current = onMarkerClick;
   onListingHoverRef.current = onListingHover;
   onDrawCompleteRef.current = onDrawComplete;
@@ -165,6 +172,9 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     },
     flyTo(lng, lat, zoom = 12) {
       mapRef.current?.flyTo({ center: [lng, lat], zoom, duration: 800 });
+    },
+    refreshViewportBbox() {
+      emitBboxRef.current?.();
     },
   }));
 
@@ -211,7 +221,11 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         if (key === lastBboxKey) return;
         lastBboxKey = key;
         onBboxChangeRef.current?.(next);
+        const center = map.getCenter();
+        onViewportChangeRef.current?.([center.lng, center.lat], map.getZoom());
       };
+
+      emitBboxRef.current = emitBbox;
 
       map.on("load", () => {
         if (cancelled) return;
@@ -256,9 +270,15 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         if (drawModeRef.current) return;
         const feature = e.features?.[0];
         const id = feature?.properties?.property_id as string | undefined;
-        if (!id) return;
+        if (!id || !feature) return;
         const listing = listingsRef.current.find((l) => l.property_id === id);
-        if (listing) onMarkerClickRef.current?.(listing);
+        if (listing) {
+          onMarkerClickRef.current?.(listing);
+          popupRef.current
+            ?.setLngLat(e.lngLat)
+            .setHTML(listingPopupHtml(feature))
+            .addTo(map);
+        }
       });
 
       map.on("mouseenter", UNCLUSTERED_LAYER, (e) => {
@@ -294,6 +314,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
 
     return () => {
       cancelled = true;
+      emitBboxRef.current = null;
       popupRef.current?.remove();
       mapRef.current?.remove();
       mapRef.current = null;
