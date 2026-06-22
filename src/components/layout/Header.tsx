@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { MapPin, Search } from "lucide-react";
+import { MapPin, Search, Info } from "lucide-react";
 
 const NAV = [
   { href: "/", label: "Map", icon: MapPin },
   { href: "/search", label: "Search", icon: Search },
+  { href: "/about", label: "About", icon: Info },
 ];
 
 export function Header() {

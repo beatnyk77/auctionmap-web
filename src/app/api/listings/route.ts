@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
     const filters: ListingFilters = {
       state: searchParams.get("state") ?? undefined,
       propertyType: searchParams.get("type") ?? undefined,
+      auctionType: searchParams.get("auction_type") ?? undefined,
       riskTier: (searchParams.get("risk") as RiskTier) ?? undefined,
       minPrice: searchParams.get("min_price")
         ? Number(searchParams.get("min_price"))
@@ -25,6 +26,8 @@ export async function GET(request: NextRequest) {
       maxPrice: searchParams.get("max_price")
         ? Number(searchParams.get("max_price"))
         : undefined,
+      minAuctionDate: searchParams.get("min_auction_date") ?? undefined,
+      maxAuctionDate: searchParams.get("max_auction_date") ?? undefined,
     };
 
     const limit = Math.min(

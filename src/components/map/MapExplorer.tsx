@@ -5,23 +5,8 @@ import { Loader2 } from "lucide-react";
 import { MapView } from "./MapView";
 import { ListingCard } from "@/components/listings/ListingCard";
 import { FilterBar } from "@/components/filters/FilterBar";
+import { buildListingsQuery } from "@/lib/filters";
 import type { Bbox, ListingFilters, ListingPublic } from "@/lib/types";
-
-function buildQuery(bbox: Bbox | null, filters: ListingFilters): string {
-  const params = new URLSearchParams();
-  if (bbox) {
-    params.set(
-      "bbox",
-      [bbox.minLng, bbox.minLat, bbox.maxLng, bbox.maxLat].join(","),
-    );
-  }
-  if (filters.state) params.set("state", filters.state);
-  if (filters.propertyType) params.set("type", filters.propertyType);
-  if (filters.riskTier) params.set("risk", filters.riskTier);
-  if (filters.minPrice != null) params.set("min_price", String(filters.minPrice));
-  if (filters.maxPrice != null) params.set("max_price", String(filters.maxPrice));
-  return params.toString();
-}
 
 interface MapExplorerProps {
   initialListings: ListingPublic[];
@@ -39,7 +24,7 @@ export function MapExplorer({ initialListings }: MapExplorerProps) {
     setLoading(true);
     setError(null);
     try {
-      const qs = buildQuery(bbox, filters);
+      const qs = buildListingsQuery(filters, bbox);
       const res = await fetch(`/api/listings?${qs}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Failed to load listings");

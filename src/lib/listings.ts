@@ -14,9 +14,14 @@ function applyClientFilters(
 ): ListingPublic[] {
   return listings.filter((l) => {
     if (filters.riskTier && l.risk_tier !== filters.riskTier) return false;
+    if (filters.auctionType && l.auction_type !== filters.auctionType) return false;
     if (filters.minPrice != null && (l.reserve_price_lakhs ?? 0) < filters.minPrice)
       return false;
     if (filters.maxPrice != null && (l.reserve_price_lakhs ?? Infinity) > filters.maxPrice)
+      return false;
+    if (filters.minAuctionDate && (l.auction_date ?? "") < filters.minAuctionDate)
+      return false;
+    if (filters.maxAuctionDate && (l.auction_date ?? "9999") > filters.maxAuctionDate)
       return false;
     return true;
   });

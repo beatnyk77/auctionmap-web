@@ -48,7 +48,10 @@ export interface Bbox {
 export interface ListingFilters {
   state?: string;
   propertyType?: string;
+  auctionType?: string;
   riskTier?: RiskTier;
   minPrice?: number;
   maxPrice?: number;
+  minAuctionDate?: string;
+  maxAuctionDate?: string;
 }

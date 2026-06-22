@@ -4,20 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, LayoutGrid, List } from "lucide-react";
 import { FilterBar } from "@/components/filters/FilterBar";
 import { ListingCard } from "@/components/listings/ListingCard";
+import { buildListingsQuery } from "@/lib/filters";
 import type { ListingFilters, ListingPublic } from "@/lib/types";
 import { formatDate, formatLakhs, formatSqftRate, cn } from "@/lib/utils";
 import Link from "next/link";
 import { RiskBadge } from "@/components/listings/RiskBadge";
-
-function buildQuery(filters: ListingFilters): string {
-  const params = new URLSearchParams();
-  if (filters.state) params.set("state", filters.state);
-  if (filters.propertyType) params.set("type", filters.propertyType);
-  if (filters.riskTier) params.set("risk", filters.riskTier);
-  if (filters.minPrice != null) params.set("min_price", String(filters.minPrice));
-  if (filters.maxPrice != null) params.set("max_price", String(filters.maxPrice));
-  return params.toString();
-}
 
 interface SearchExplorerProps {
   initialListings: ListingPublic[];
@@ -32,7 +23,7 @@ export function SearchExplorer({ initialListings }: SearchExplorerProps) {
   const fetchListings = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/listings?${buildQuery(filters)}`);
+      const res = await fetch(`/api/listings?${buildListingsQuery(filters)}`);
       const json = await res.json();
       setListings(json.listings ?? []);
     } finally {

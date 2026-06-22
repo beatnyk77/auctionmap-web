@@ -23,6 +23,8 @@ const PROPERTY_TYPES = [
 
 const RISK_TIERS: RiskTier[] = ["Green", "Amber", "Red", "Unscored"];
 
+const AUCTION_TYPES = ["SARFAESI", "DRT", "IBC/NCLT", "Other"];
+
 interface FilterBarProps {
   filters: ListingFilters;
   onChange: (filters: ListingFilters) => void;
@@ -61,6 +63,22 @@ export function FilterBar({ filters, onChange, compact }: FilterBarProps) {
       >
         <option value="">All types</option>
         {PROPERTY_TYPES.map((t) => (
+          <option key={t} value={t}>
+            {t}
+          </option>
+        ))}
+      </select>
+
+      <select
+        aria-label="Filter by auction type"
+        className={selectClass}
+        value={filters.auctionType ?? ""}
+        onChange={(e) =>
+          onChange({ ...filters, auctionType: e.target.value || undefined })
+        }
+      >
+        <option value="">All auction types</option>
+        {AUCTION_TYPES.map((t) => (
           <option key={t} value={t}>
             {t}
           </option>
@@ -111,6 +129,26 @@ export function FilterBar({ filters, onChange, compact }: FilterBarProps) {
             ...filters,
             maxPrice: e.target.value ? Number(e.target.value) : undefined,
           })
+        }
+      />
+
+      <input
+        aria-label="Auction date from"
+        type="date"
+        className={selectClass}
+        value={filters.minAuctionDate ?? ""}
+        onChange={(e) =>
+          onChange({ ...filters, minAuctionDate: e.target.value || undefined })
+        }
+      />
+
+      <input
+        aria-label="Auction date to"
+        type="date"
+        className={selectClass}
+        value={filters.maxAuctionDate ?? ""}
+        onChange={(e) =>
+          onChange({ ...filters, maxAuctionDate: e.target.value || undefined })
         }
       />
     </div>
