@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, LayoutGrid, List } from "lucide-react";
+import { ActiveFilterChips } from "@/components/filters/ActiveFilterChips";
 import { FilterBar } from "@/components/filters/FilterBar";
 import { ListingCard } from "@/components/listings/ListingCard";
 import { buildListingsQuery } from "@/lib/filters";
@@ -93,8 +94,9 @@ export function SearchExplorer({
         </div>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-6 space-y-3">
         <FilterBar filters={filters} onChange={setFilters} />
+        <ActiveFilterChips filters={filters} onChange={setFilters} />
       </div>
 
       {loading && (

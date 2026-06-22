@@ -1,5 +1,6 @@
 import type { MutableRefObject } from "react";
 import { ListingCard } from "@/components/listings/ListingCard";
+import { ActiveFilterChips } from "@/components/filters/ActiveFilterChips";
 import { FilterBar } from "@/components/filters/FilterBar";
 import { SaveSearchButton } from "@/components/workflow/SaveSearchButton";
 import type { ListingFilters, ListingPublic } from "@/lib/types";
@@ -49,6 +50,9 @@ export function MapListingsPanel({
           </div>
         </div>
         <FilterBar filters={filters} onChange={onFiltersChange} compact />
+        <div className="mt-2">
+          <ActiveFilterChips filters={filters} onChange={onFiltersChange} />
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
