@@ -1,153 +1,268 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import maplibregl from "maplibre-gl";
-import type { FeatureCollection, Point } from "geojson";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import maplibregl, { type GeoJSONSource, type Map as MapLibreMap } from "maplibre-gl";
+import type { FeatureCollection } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
+import {
+  DEFAULT_ZOOM,
+  DRAW_LAYER,
+  DRAW_OUTLINE_LAYER,
+  DRAW_SOURCE_ID,
+  INDIA_CENTER,
+  MAP_STYLE_FALLBACK,
+  MAP_STYLE_PRIMARY,
+  UNCLUSTERED_LAYER,
+  CLUSTER_LAYER,
+  SOURCE_ID,
+} from "@/lib/map/constants";
+import { bboxToPolygon, listingsBbox, toGeoJson } from "@/lib/map/geojson";
 import type { Bbox, ListingPublic } from "@/lib/types";
-import { riskColor } from "@/lib/utils";
+import { formatLakhs } from "@/lib/utils";
+import {
+  addListingsLayers,
+  clusterCoordsFromEvent,
+  setHeatmapVisibility,
+  updateListingsData,
+} from "./useMapListingsLayer";
+
+export interface MapViewHandle {
+  flyToListing: (listing: ListingPublic) => void;
+  fitToListings: (listings: ListingPublic[]) => void;
+  flyTo: (lng: number, lat: number, zoom?: number) => void;
+}
 
 interface MapViewProps {
   listings: ListingPublic[];
   activeId?: string | null;
   onBboxChange?: (bbox: Bbox) => void;
   onMarkerClick?: (listing: ListingPublic) => void;
-  center?: [number, number];
-  zoom?: number;
+  onListingHover?: (listing: ListingPublic | null) => void;
+  drawMode?: boolean;
+  onDrawComplete?: (bbox: Bbox) => void;
+  showHeatmap?: boolean;
+  drawnBbox?: Bbox | null;
+  initialCenter?: [number, number];
+  initialZoom?: number;
+  fitRequest?: number;
+  geocodeTarget?: { lng: number; lat: number; token: number } | null;
 }
 
-const INDIA_CENTER: [number, number] = [78.9629, 22.5937];
-const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
-const SOURCE_ID = "listings";
-const CLUSTER_LAYER = "listings-clusters";
-const CLUSTER_COUNT_LAYER = "listings-cluster-count";
-const UNCLUSTERED_LAYER = "listings-unclustered";
+function listingPopupHtml(feature: maplibregl.MapGeoJSONFeature): string {
+  const name = feature.properties?.display_name ?? "Listing";
+  const tier = feature.properties?.risk_tier ?? "Unscored";
+  const price = formatLakhs(feature.properties?.reserve_price_lakhs);
+  return `<div class="map-popup">
+    <p class="map-popup-title">${name}</p>
+    <p class="map-popup-meta">${tier} · ${price}</p>
+  </div>`;
+}
 
-function toGeoJson(
-  listings: ListingPublic[],
-  activeId?: string | null,
-): FeatureCollection<Point> {
-  return {
+function ensureDrawLayers(map: MapLibreMap) {
+  if (map.getSource(DRAW_SOURCE_ID)) return;
+
+  const empty: FeatureCollection = { type: "FeatureCollection", features: [] };
+  map.addSource(DRAW_SOURCE_ID, { type: "geojson", data: empty });
+
+  map.addLayer({
+    id: DRAW_LAYER,
+    type: "fill",
+    source: DRAW_SOURCE_ID,
+    paint: { "fill-color": "#3b82f6", "fill-opacity": 0.12 },
+  });
+
+  map.addLayer({
+    id: DRAW_OUTLINE_LAYER,
+    type: "line",
+    source: DRAW_SOURCE_ID,
+    paint: { "line-color": "#2563eb", "line-width": 2, "line-dasharray": [2, 2] },
+  });
+}
+
+function setDrawPreview(map: MapLibreMap, bbox: Bbox | null) {
+  const source = map.getSource(DRAW_SOURCE_ID) as GeoJSONSource | undefined;
+  if (!source) return;
+  if (!bbox) {
+    source.setData({ type: "FeatureCollection", features: [] });
+    return;
+  }
+  source.setData({
     type: "FeatureCollection",
-    features: listings
-      .filter((l) => l.lat != null && l.lon != null)
-      .map((l) => ({
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [l.lon, l.lat] },
-        properties: {
-          property_id: l.property_id,
-          display_name: l.display_name,
-          risk_tier: l.risk_tier ?? "Unscored",
-          color: riskColor(l.risk_tier),
-          active: l.property_id === activeId ? 1 : 0,
-        },
-      })),
-  };
+    features: [{ type: "Feature", geometry: bboxToPolygon(bbox), properties: {} }],
+  });
 }
 
-export function MapView({
-  listings,
-  activeId,
-  onBboxChange,
-  onMarkerClick,
-  center = INDIA_CENTER,
-  zoom = 4.8,
-}: MapViewProps) {
+export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
+  {
+    listings,
+    activeId,
+    onBboxChange,
+    onMarkerClick,
+    onListingHover,
+    drawMode = false,
+    onDrawComplete,
+    showHeatmap = false,
+    drawnBbox = null,
+    initialCenter = INDIA_CENTER,
+    initialZoom = DEFAULT_ZOOM,
+    fitRequest = 0,
+    geocodeTarget = null,
+  },
+  ref,
+) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
+  const popupRef = useRef<maplibregl.Popup | null>(null);
   const listingsRef = useRef(listings);
+  const activeIdRef = useRef(activeId);
+  const drawStartRef = useRef<[number, number] | null>(null);
+  const drawMoveHandlerRef = useRef<((e: maplibregl.MapMouseEvent) => void) | null>(null);
+
+  const onBboxChangeRef = useRef(onBboxChange);
+  const onMarkerClickRef = useRef(onMarkerClick);
+  const onListingHoverRef = useRef(onListingHover);
+  const onDrawCompleteRef = useRef(onDrawComplete);
+  const drawModeRef = useRef(drawMode);
+
+  onBboxChangeRef.current = onBboxChange;
+  onMarkerClickRef.current = onMarkerClick;
+  onListingHoverRef.current = onListingHover;
+  onDrawCompleteRef.current = onDrawComplete;
+  drawModeRef.current = drawMode;
   listingsRef.current = listings;
+  activeIdRef.current = activeId;
+
+  const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [tilesLoading, setTilesLoading] = useState(true);
+
+  const geoJson = useMemo(() => toGeoJson(listings, activeId), [listings, activeId]);
+
+  useImperativeHandle(ref, () => ({
+    flyToListing(listing) {
+      const map = mapRef.current;
+      if (!map || listing.lat == null || listing.lon == null) return;
+      map.flyTo({ center: [listing.lon, listing.lat], zoom: Math.max(map.getZoom(), 13), duration: 700 });
+    },
+    fitToListings(targetListings) {
+      const map = mapRef.current;
+      const bbox = listingsBbox(targetListings);
+      if (!map || !bbox) return;
+      map.fitBounds(
+        [
+          [bbox.minLng, bbox.minLat],
+          [bbox.maxLng, bbox.maxLat],
+        ],
+        { padding: 48, duration: 800, maxZoom: 14 },
+      );
+    },
+    flyTo(lng, lat, zoom = 12) {
+      mapRef.current?.flyTo({ center: [lng, lat], zoom, duration: 800 });
+    },
+  }));
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: MAP_STYLE,
-      center,
-      zoom,
-    });
+    let cancelled = false;
 
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-
-    const emitBbox = () => {
-      if (!onBboxChange) return;
-      const bounds = map.getBounds();
-      if (!bounds) return;
-      onBboxChange({
-        minLng: bounds.getWest(),
-        minLat: bounds.getSouth(),
-        maxLng: bounds.getEast(),
-        maxLat: bounds.getNorth(),
-      });
-    };
-
-    map.on("load", () => {
-      map.addSource(SOURCE_ID, {
-        type: "geojson",
-        data: toGeoJson(listingsRef.current, activeId),
-        cluster: true,
-        clusterMaxZoom: 12,
-        clusterRadius: 50,
+    const initMap = (style: string) => {
+      const map = new maplibregl.Map({
+        container: containerRef.current!,
+        style,
+        center: initialCenter,
+        zoom: initialZoom,
+        attributionControl: { compact: true },
       });
 
-      map.addLayer({
-        id: CLUSTER_LAYER,
-        type: "circle",
-        source: SOURCE_ID,
-        filter: ["has", "point_count"],
-        paint: {
-          "circle-color": "#334155",
-          "circle-radius": ["step", ["get", "point_count"], 16, 10, 22, 50, 28],
-          "circle-opacity": 0.85,
-        },
+      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+      popupRef.current = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 12,
+        className: "auctionmap-popup",
       });
 
-      map.addLayer({
-        id: CLUSTER_COUNT_LAYER,
-        type: "symbol",
-        source: SOURCE_ID,
-        filter: ["has", "point_count"],
-        layout: {
-          "text-field": ["get", "point_count_abbreviated"],
-          "text-size": 12,
-        },
-        paint: { "text-color": "#ffffff" },
+      const emitBbox = () => {
+        const bounds = map.getBounds();
+        if (!bounds) return;
+        onBboxChangeRef.current?.({
+          minLng: bounds.getWest(),
+          minLat: bounds.getSouth(),
+          maxLng: bounds.getEast(),
+          maxLat: bounds.getNorth(),
+        });
+      };
+
+      map.on("load", () => {
+        if (cancelled) return;
+        addListingsLayers(map, listingsRef.current, activeIdRef.current);
+        ensureDrawLayers(map);
+        setMapReady(true);
+        setTilesLoading(false);
+        emitBbox();
       });
 
-      map.addLayer({
-        id: UNCLUSTERED_LAYER,
-        type: "circle",
-        source: SOURCE_ID,
-        filter: ["!", ["has", "point_count"]],
-        paint: {
-          "circle-color": ["get", "color"],
-          "circle-radius": ["case", ["==", ["get", "active"], 1], 10, 7],
-          "circle-stroke-width": 2,
-          "circle-stroke-color": "#ffffff",
-        },
+      map.on("error", () => {
+        if (cancelled) return;
+        if (style === MAP_STYLE_PRIMARY) {
+          map.remove();
+          mapRef.current = null;
+          initMap(MAP_STYLE_FALLBACK);
+          return;
+        }
+        setMapError("Map tiles could not be loaded.");
+        setTilesLoading(false);
       });
+
+      map.on("moveend", emitBbox);
 
       map.on("click", CLUSTER_LAYER, async (e) => {
-        const features = map.queryRenderedFeatures(e.point, { layers: [CLUSTER_LAYER] });
-        const clusterId = features[0]?.properties?.cluster_id;
-        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource;
-        if (clusterId == null) return;
+        if (drawModeRef.current) return;
+        const hit = clusterCoordsFromEvent(map, e.point);
+        if (!hit) return;
+        const source = map.getSource(SOURCE_ID) as GeoJSONSource;
         try {
-          const expansionZoom = await source.getClusterExpansionZoom(clusterId);
-          const coords = (features[0].geometry as Point).coordinates as [number, number];
-          map.easeTo({ center: coords, zoom: expansionZoom });
+          const expansionZoom = await source.getClusterExpansionZoom(hit.clusterId);
+          map.easeTo({ center: hit.coords, zoom: expansionZoom });
         } catch {
-          // cluster no longer valid after data refresh
+          // stale cluster after refresh
         }
       });
 
       map.on("click", UNCLUSTERED_LAYER, (e) => {
+        if (drawModeRef.current) return;
         const feature = e.features?.[0];
         const id = feature?.properties?.property_id as string | undefined;
         if (!id) return;
         const listing = listingsRef.current.find((l) => l.property_id === id);
-        if (listing) onMarkerClick?.(listing);
+        if (listing) onMarkerClickRef.current?.(listing);
+      });
+
+      map.on("mouseenter", UNCLUSTERED_LAYER, (e) => {
+        map.getCanvas().style.cursor = "pointer";
+        const feature = e.features?.[0];
+        if (!feature || !popupRef.current) return;
+        const id = feature.properties?.property_id as string | undefined;
+        const listing = listingsRef.current.find((l) => l.property_id === id) ?? null;
+        onListingHoverRef.current?.(listing);
+        popupRef.current
+          .setLngLat(e.lngLat)
+          .setHTML(listingPopupHtml(feature))
+          .addTo(map);
+      });
+
+      map.on("mouseleave", UNCLUSTERED_LAYER, () => {
+        map.getCanvas().style.cursor = "";
+        popupRef.current?.remove();
+        onListingHoverRef.current?.(null);
       });
 
       map.on("mouseenter", CLUSTER_LAYER, () => {
@@ -156,35 +271,168 @@ export function MapView({
       map.on("mouseleave", CLUSTER_LAYER, () => {
         map.getCanvas().style.cursor = "";
       });
-      map.on("mouseenter", UNCLUSTERED_LAYER, () => {
-        map.getCanvas().style.cursor = "pointer";
-      });
-      map.on("mouseleave", UNCLUSTERED_LAYER, () => {
-        map.getCanvas().style.cursor = "";
-      });
 
-      emitBbox();
-    });
+      mapRef.current = map;
+    };
 
-    map.on("moveend", emitBbox);
-    mapRef.current = map;
+    initMap(MAP_STYLE_PRIMARY);
 
     return () => {
-      map.remove();
+      cancelled = true;
+      popupRef.current?.remove();
+      mapRef.current?.remove();
       mapRef.current = null;
+      setMapReady(false);
     };
-  }, [center, zoom, onBboxChange, onMarkerClick]);
+  }, [initialCenter, initialZoom]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    source?.setData(toGeoJson(listings, activeId));
-  }, [listings, activeId]);
+    if (!map || !mapReady) return;
+    updateListingsData(map, listings, activeId);
+  }, [geoJson, listings, activeId, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    setHeatmapVisibility(map, showHeatmap);
+  }, [showHeatmap, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    setDrawPreview(map, drawnBbox);
+  }, [drawnBbox, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const cleanupDraw = () => {
+      if (drawMoveHandlerRef.current) {
+        map.off("mousemove", drawMoveHandlerRef.current);
+        drawMoveHandlerRef.current = null;
+      }
+      map.getCanvas().style.cursor = "";
+      drawStartRef.current = null;
+    };
+
+    if (!drawMode) {
+      cleanupDraw();
+      return;
+    }
+
+    map.getCanvas().style.cursor = "crosshair";
+
+    const onClick = (e: maplibregl.MapMouseEvent) => {
+      if (!drawStartRef.current) {
+        drawStartRef.current = [e.lngLat.lng, e.lngLat.lat];
+        const moveHandler = (ev: maplibregl.MapMouseEvent) => {
+          const start = drawStartRef.current;
+          if (!start) return;
+          const bbox: Bbox = {
+            minLng: Math.min(start[0], ev.lngLat.lng),
+            minLat: Math.min(start[1], ev.lngLat.lat),
+            maxLng: Math.max(start[0], ev.lngLat.lng),
+            maxLat: Math.max(start[1], ev.lngLat.lat),
+          };
+          setDrawPreview(map, bbox);
+        };
+        drawMoveHandlerRef.current = moveHandler;
+        map.on("mousemove", moveHandler);
+        return;
+      }
+
+      const start = drawStartRef.current;
+      const bbox: Bbox = {
+        minLng: Math.min(start[0], e.lngLat.lng),
+        minLat: Math.min(start[1], e.lngLat.lat),
+        maxLng: Math.max(start[0], e.lngLat.lng),
+        maxLat: Math.max(start[1], e.lngLat.lat),
+      };
+      cleanupDraw();
+      setDrawPreview(map, bbox);
+      onDrawCompleteRef.current?.(bbox);
+    };
+
+    map.on("click", onClick);
+    return () => {
+      map.off("click", onClick);
+      cleanupDraw();
+    };
+  }, [drawMode, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !activeId) return;
+    const listing = listings.find((l) => l.property_id === activeId);
+    if (!listing || listing.lat == null || listing.lon == null) return;
+    const center = map.getCenter();
+    const dist =
+      Math.hypot(center.lng - listing.lon, center.lat - listing.lat) * 111;
+    if (dist > 2) {
+      map.flyTo({
+        center: [listing.lon, listing.lat],
+        zoom: Math.max(map.getZoom(), 12),
+        duration: 600,
+      });
+    }
+  }, [activeId, listings, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || fitRequest === 0) return;
+    const bbox = listingsBbox(listings);
+    if (!bbox) return;
+    map.fitBounds(
+      [
+        [bbox.minLng, bbox.minLat],
+        [bbox.maxLng, bbox.maxLat],
+      ],
+      { padding: 48, duration: 800, maxZoom: 14 },
+    );
+  }, [fitRequest, listings, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !geocodeTarget) return;
+    map.flyTo({
+      center: [geocodeTarget.lng, geocodeTarget.lat],
+      zoom: 12,
+      duration: 900,
+    });
+  }, [geocodeTarget, mapReady]);
+
+  if (mapError) {
+    return (
+      <div className="flex h-full min-h-[300px] flex-col items-center justify-center gap-2 bg-slate-100 p-6 text-center">
+        <p className="text-sm text-slate-700">{mapError}</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-full w-full min-h-[300px]">
-      <div ref={containerRef} className="h-full w-full" />
+      <div
+        ref={containerRef}
+        className="h-full w-full"
+        role="application"
+        aria-label="Interactive property map"
+      />
+      {tilesLoading && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-100/60">
+          <p className="rounded-lg bg-white/90 px-3 py-2 text-xs text-slate-600 shadow-sm">
+            Loading tiles…
+          </p>
+        </div>
+      )}
     </div>
   );
-}
+});

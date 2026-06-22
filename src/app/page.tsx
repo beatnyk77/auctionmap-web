@@ -1,4 +1,7 @@
+import { Suspense } from "react";
 import { MapExplorer } from "@/components/map/MapExplorer";
+import { MapSkeleton } from "@/components/map/MapSkeleton";
+import { getSessionUser } from "@/lib/auth";
 import { fetchAllListings } from "@/lib/listings";
 import type { ListingPublic } from "@/lib/types";
 
@@ -7,6 +10,8 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   let initialListings: ListingPublic[] = [];
   let setupError: string | null = null;
+
+  const user = await getSessionUser();
 
   try {
     initialListings = await fetchAllListings();
@@ -30,5 +35,9 @@ export default async function HomePage() {
     );
   }
 
-  return <MapExplorer initialListings={initialListings} />;
+  return (
+    <Suspense fallback={<MapSkeleton />}>
+      <MapExplorer initialListings={initialListings} isAuthenticated={!!user} />
+    </Suspense>
+  );
 }

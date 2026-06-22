@@ -9,25 +9,6 @@ const DEFAULT_BBOX: Bbox = {
   maxLat: 35,
 };
 
-function applyClientFilters(
-  listings: ListingPublic[],
-  filters: ListingFilters,
-): ListingPublic[] {
-  return listings.filter((l) => {
-    if (filters.riskTier && l.risk_tier !== filters.riskTier) return false;
-    if (filters.auctionType && l.auction_type !== filters.auctionType) return false;
-    if (filters.minPrice != null && (l.reserve_price_lakhs ?? 0) < filters.minPrice)
-      return false;
-    if (filters.maxPrice != null && (l.reserve_price_lakhs ?? Infinity) > filters.maxPrice)
-      return false;
-    if (filters.minAuctionDate && (l.auction_date ?? "") < filters.minAuctionDate)
-      return false;
-    if (filters.maxAuctionDate && (l.auction_date ?? "9999") > filters.maxAuctionDate)
-      return false;
-    return true;
-  });
-}
-
 export async function fetchListingsInBbox(
   bbox: Bbox = DEFAULT_BBOX,
   filters: ListingFilters = {},
@@ -44,11 +25,17 @@ export async function fetchListingsInBbox(
     max_lat: bbox.maxLat,
     filter_state: mergedFilters.state ?? null,
     filter_type: mergedFilters.propertyType ?? null,
+    filter_auction_type: mergedFilters.auctionType ?? null,
+    filter_risk: mergedFilters.riskTier ?? null,
+    filter_min_price: mergedFilters.minPrice ?? null,
+    filter_max_price: mergedFilters.maxPrice ?? null,
+    filter_min_auction_date: mergedFilters.minAuctionDate ?? null,
+    filter_max_auction_date: mergedFilters.maxAuctionDate ?? null,
     row_limit: limit,
   });
 
   if (error) throw new Error(error.message);
-  return applyClientFilters((data ?? []) as ListingPublic[], mergedFilters);
+  return (data ?? []) as ListingPublic[];
 }
 
 export async function fetchListingDetail(

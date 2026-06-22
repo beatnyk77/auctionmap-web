@@ -23,4 +23,26 @@ body {
 
 .maplibregl-ctrl-attrib {
   font-size: 10px;
+  max-width: 50%;
+}
+
+.maplibregl-popup.auctionmap-popup .maplibregl-popup-content {
+  padding: 8px 10px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgb(15 23 42 / 12%);
+}
+
+.map-popup-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.3;
+  max-width: 180px;
+}
+
+.map-popup-meta {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #64748b;
 }

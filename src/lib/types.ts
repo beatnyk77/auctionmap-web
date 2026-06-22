@@ -54,4 +54,5 @@ export interface ListingFilters {
   maxPrice?: number;
   minAuctionDate?: string;
   maxAuctionDate?: string;
+  bbox?: Bbox;
 }

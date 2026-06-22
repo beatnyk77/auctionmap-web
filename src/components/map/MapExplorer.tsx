@@ -1,46 +1,118 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { MapView } from "./MapView";
 import { ListingCard } from "@/components/listings/ListingCard";
 import { FilterBar } from "@/components/filters/FilterBar";
+import { SaveSearchButton } from "@/components/workflow/SaveSearchButton";
 import { buildListingsQuery } from "@/lib/filters";
+import { hasUrlFilters, parseMapUrlState, serializeMapUrlState } from "@/lib/map/url-state";
+import { DEFAULT_ZOOM, INDIA_CENTER } from "@/lib/map/constants";
 import type { Bbox, ListingFilters, ListingPublic } from "@/lib/types";
+import { MapControls } from "./MapControls";
+import { MapErrorBoundary } from "./MapErrorBoundary";
+import { MapGeocodeSearch, type GeocodeResult } from "./MapGeocodeSearch";
+import { MapLegend } from "./MapLegend";
+import { MapSkeleton } from "./MapSkeleton";
+
+const MapView = dynamic(() => import("./MapView").then((m) => m.MapView), {
+  ssr: false,
+  loading: () => <MapSkeleton />,
+});
 
 interface MapExplorerProps {
   initialListings: ListingPublic[];
+  isAuthenticated?: boolean;
 }
 
-export function MapExplorer({ initialListings }: MapExplorerProps) {
+export function MapExplorer({
+  initialListings,
+  isAuthenticated = false,
+}: MapExplorerProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const urlParsed = useMemo(() => parseMapUrlState(searchParams), [searchParams]);
+
   const [listings, setListings] = useState(initialListings);
-  const [filters, setFilters] = useState<ListingFilters>({});
-  const [bbox, setBbox] = useState<Bbox | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<ListingFilters>(urlParsed.filters);
+  const [bbox, setBbox] = useState<Bbox | null>(urlParsed.bbox);
+  const [drawnBbox, setDrawnBbox] = useState<Bbox | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(urlParsed.activeId);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [heatmapOn, setHeatmapOn] = useState(false);
+  const [drawMode, setDrawMode] = useState(false);
+  const [fitRequest, setFitRequest] = useState(0);
+  const [geocodeTarget, setGeocodeTarget] = useState<{
+    lng: number;
+    lat: number;
+    token: number;
+  } | null>(null);
+  const [mapCenter, setMapCenter] = useState<[number, number]>(
+    urlParsed.center ?? INDIA_CENTER,
+  );
+  const [mapZoom, setMapZoom] = useState(urlParsed.zoom ?? DEFAULT_ZOOM);
+
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const skipInitialFetchRef = useRef(
+    initialListings.length > 0 && !hasUrlFilters(searchParams),
+  );
+  const urlSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const effectiveBbox = drawnBbox ?? bbox;
 
   const fetchListings = useCallback(async () => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+
     setLoading(true);
     setError(null);
     try {
-      const qs = buildListingsQuery(filters, bbox);
-      const res = await fetch(`/api/listings?${qs}`);
+      const qs = buildListingsQuery(filters, effectiveBbox);
+      const res = await fetch(`/api/listings?${qs}`, { signal: controller.signal });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Failed to load listings");
       setListings(json.listings ?? []);
     } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") return;
       setError(e instanceof Error ? e.message : "Failed to load listings");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, [bbox, filters]);
+  }, [effectiveBbox, filters]);
 
   useEffect(() => {
-    if (!bbox) return;
+    if (!effectiveBbox) return;
+    if (skipInitialFetchRef.current) {
+      skipInitialFetchRef.current = false;
+      return;
+    }
     const timer = setTimeout(fetchListings, 300);
     return () => clearTimeout(timer);
-  }, [bbox, filters, fetchListings]);
+  }, [effectiveBbox, filters, fetchListings]);
+
+  useEffect(() => {
+    if (urlSyncTimerRef.current) clearTimeout(urlSyncTimerRef.current);
+    urlSyncTimerRef.current = setTimeout(() => {
+      const qs = serializeMapUrlState({
+        filters,
+        bbox: effectiveBbox,
+        center: mapCenter,
+        zoom: mapZoom,
+        activeId,
+      });
+      const next = qs ? `${pathname}?${qs}` : pathname;
+      router.replace(next, { scroll: false });
+    }, 450);
+    return () => {
+      if (urlSyncTimerRef.current) clearTimeout(urlSyncTimerRef.current);
+    };
+  }, [filters, effectiveBbox, mapCenter, mapZoom, activeId, pathname, router]);
 
   const sorted = useMemo(
     () =>
@@ -52,17 +124,90 @@ export function MapExplorer({ initialListings }: MapExplorerProps) {
     [listings],
   );
 
+  const scrollToCard = useCallback((propertyId: string) => {
+    cardRefs.current[propertyId]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+    });
+  }, []);
+
+  const handleMarkerClick = useCallback(
+    (listing: ListingPublic) => {
+      setActiveId(listing.property_id);
+      scrollToCard(listing.property_id);
+    },
+    [scrollToCard],
+  );
+
+  const handleListingHover = useCallback((listing: ListingPublic | null) => {
+    if (listing) setActiveId(listing.property_id);
+  }, []);
+
+  const handleCardHover = useCallback((listing: ListingPublic) => {
+    setActiveId(listing.property_id);
+  }, []);
+
+  const handleBboxChange = useCallback((next: Bbox) => {
+    setBbox(next);
+    setMapCenter([(next.minLng + next.maxLng) / 2, (next.minLat + next.maxLat) / 2]);
+  }, []);
+
+  const handleDrawComplete = useCallback((next: Bbox) => {
+    setDrawnBbox(next);
+    setDrawMode(false);
+    setBbox(next);
+  }, []);
+
+  const handleGeocodeSelect = useCallback((result: GeocodeResult) => {
+    setGeocodeTarget({ lng: result.lng, lat: result.lat, token: Date.now() });
+    setMapCenter([result.lng, result.lat]);
+    setMapZoom(12);
+  }, []);
+
+  const savedFilters: ListingFilters = useMemo(
+    () => ({
+      ...filters,
+      bbox: effectiveBbox ?? undefined,
+    }),
+    [filters, effectiveBbox],
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       <div className="relative min-h-[45vh] flex-1 lg:min-h-0">
-        <MapView
-          listings={listings}
-          activeId={activeId}
-          onBboxChange={setBbox}
-          onMarkerClick={(l) => setActiveId(l.property_id)}
-        />
+        <MapErrorBoundary>
+          <MapGeocodeSearch onSelect={handleGeocodeSelect} />
+          <MapControls
+            heatmapOn={heatmapOn}
+            drawMode={drawMode}
+            onToggleHeatmap={() => setHeatmapOn((v) => !v)}
+            onToggleDraw={() => setDrawMode((v) => !v)}
+            onFitResults={() => setFitRequest((n) => n + 1)}
+            onClearDraw={() => {
+              setDrawnBbox(null);
+              setDrawMode(false);
+            }}
+            hasDrawnArea={drawnBbox != null}
+          />
+          <MapLegend />
+          <MapView
+            listings={listings}
+            activeId={activeId}
+            onBboxChange={handleBboxChange}
+            onMarkerClick={handleMarkerClick}
+            onListingHover={handleListingHover}
+            drawMode={drawMode}
+            onDrawComplete={handleDrawComplete}
+            showHeatmap={heatmapOn}
+            drawnBbox={drawnBbox}
+            initialCenter={mapCenter}
+            initialZoom={mapZoom}
+            fitRequest={fitRequest}
+            geocodeTarget={geocodeTarget}
+          />
+        </MapErrorBoundary>
         {loading && (
-          <div className="absolute left-3 top-3 flex items-center gap-2 rounded-lg bg-white/95 px-3 py-2 text-xs text-slate-600 shadow-sm">
+          <div className="absolute left-3 top-14 flex items-center gap-2 rounded-lg bg-white/95 px-3 py-2 text-xs text-slate-600 shadow-sm">
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
             Updating…
           </div>
@@ -71,11 +216,14 @@ export function MapExplorer({ initialListings }: MapExplorerProps) {
 
       <aside className="flex w-full flex-col border-t border-slate-200 bg-slate-50 lg:w-[380px] lg:border-l lg:border-t-0">
         <div className="border-b border-slate-200 p-3">
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-slate-900">
               {sorted.length} listings
             </h2>
-            <p className="text-[11px] text-slate-500">Updated daily 6 AM IST</p>
+            <div className="flex items-center gap-2">
+              <SaveSearchButton filters={savedFilters} isAuthenticated={isAuthenticated} />
+              <p className="hidden text-[11px] text-slate-500 sm:block">Updated daily 6 AM IST</p>
+            </div>
           </div>
           <FilterBar filters={filters} onChange={setFilters} compact />
         </div>
@@ -90,12 +238,18 @@ export function MapExplorer({ initialListings }: MapExplorerProps) {
             </p>
           )}
           {sorted.map((listing) => (
-            <ListingCard
+            <div
               key={listing.property_id}
-              listing={listing}
-              active={listing.property_id === activeId}
-              onHover={() => setActiveId(listing.property_id)}
-            />
+              ref={(el) => {
+                cardRefs.current[listing.property_id] = el;
+              }}
+            >
+              <ListingCard
+                listing={listing}
+                active={listing.property_id === activeId}
+                onHover={() => handleCardHover(listing)}
+              />
+            </div>
           ))}
         </div>
       </aside>
