@@ -40,10 +40,16 @@ export function MapExplorer({
   const searchParams = useSearchParams();
   const urlParsed = useMemo(() => parseMapUrlState(searchParams), [searchParams]);
 
-  const mapBootstrap = useRef({
-    center: urlParsed.center ?? INDIA_CENTER,
-    zoom: urlParsed.zoom ?? DEFAULT_ZOOM,
-  });
+  const mapBootstrap = useMemo(
+    () => ({
+      center: urlParsed.center ?? INDIA_CENTER,
+      zoom: urlParsed.zoom ?? DEFAULT_ZOOM,
+    }),
+    // Stable map init — intentionally not tied to live URL/search param updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const urlViewportRef = useRef(mapBootstrap);
 
   const [listings, setListings] = useState(initialListings);
   const [filters, setFilters] = useState<ListingFilters>(urlParsed.filters);
@@ -105,12 +111,12 @@ export function MapExplorer({
   useEffect(() => {
     if (urlSyncTimerRef.current) clearTimeout(urlSyncTimerRef.current);
     urlSyncTimerRef.current = setTimeout(() => {
-      const center = effectiveBbox ? bboxCenter(effectiveBbox) : mapBootstrap.current.center;
+      const center = effectiveBbox ? bboxCenter(effectiveBbox) : urlViewportRef.current.center;
       const qs = serializeMapUrlState({
         filters,
         bbox: effectiveBbox,
         center,
-        zoom: mapBootstrap.current.zoom,
+        zoom: urlViewportRef.current.zoom,
         activeId,
       });
       const next = qs ? `${pathname}?${qs}` : pathname;
@@ -177,8 +183,7 @@ export function MapExplorer({
 
   const handleGeocodeSelect = useCallback((result: GeocodeResult) => {
     setGeocodeTarget({ lng: result.lng, lat: result.lat, token: Date.now() });
-    mapBootstrap.current.center = [result.lng, result.lat];
-    mapBootstrap.current.zoom = 12;
+    urlViewportRef.current = { center: [result.lng, result.lat], zoom: 12 };
   }, []);
 
   const savedFilters: ListingFilters = useMemo(
@@ -210,7 +215,7 @@ export function MapExplorer({
           <MapView
             listings={listings}
             activeId={activeId}
-            bootstrap={mapBootstrap.current}
+            bootstrap={mapBootstrap}
             onBboxChange={handleBboxChange}
             onMarkerClick={handleMarkerClick}
             onListingHover={handleListingHover}
