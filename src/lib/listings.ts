@@ -9,6 +9,52 @@ const DEFAULT_BBOX: Bbox = {
   maxLat: 35,
 };
 
+function applyClientFilters(
+  listings: ListingPublic[],
+  filters: ListingFilters,
+): ListingPublic[] {
+  return listings.filter((l) => {
+    if (filters.riskTier && l.risk_tier !== filters.riskTier) return false;
+    if (filters.auctionType && l.auction_type !== filters.auctionType) return false;
+    if (filters.minPrice != null && (l.reserve_price_lakhs ?? 0) < filters.minPrice)
+      return false;
+    if (filters.maxPrice != null && (l.reserve_price_lakhs ?? Infinity) > filters.maxPrice)
+      return false;
+    if (filters.minAuctionDate && (l.auction_date ?? "") < filters.minAuctionDate)
+      return false;
+    if (filters.maxAuctionDate && (l.auction_date ?? "9999") > filters.maxAuctionDate)
+      return false;
+    return true;
+  });
+}
+
+function isMissingExtendedRpc(error: { message?: string; code?: string }): boolean {
+  return (
+    error.code === "PGRST202" ||
+    Boolean(error.message?.includes("listings_in_bbox"))
+  );
+}
+
+async function fetchViaLegacyRpc(
+  bbox: Bbox,
+  filters: ListingFilters,
+  limit: number,
+): Promise<ListingPublic[]> {
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase.rpc("listings_in_bbox", {
+    min_lng: bbox.minLng,
+    min_lat: bbox.minLat,
+    max_lng: bbox.maxLng,
+    max_lat: bbox.maxLat,
+    filter_state: filters.state ?? null,
+    filter_type: filters.propertyType ?? null,
+    row_limit: limit,
+  });
+
+  if (error) throw new Error(error.message);
+  return applyClientFilters((data ?? []) as ListingPublic[], filters);
+}
+
 export async function fetchListingsInBbox(
   bbox: Bbox = DEFAULT_BBOX,
   filters: ListingFilters = {},
@@ -34,7 +80,13 @@ export async function fetchListingsInBbox(
     row_limit: limit,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (isMissingExtendedRpc(error)) {
+      return fetchViaLegacyRpc(bbox, mergedFilters, limit);
+    }
+    throw new Error(error.message);
+  }
+
   return (data ?? []) as ListingPublic[];
 }
 
