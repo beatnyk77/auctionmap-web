@@ -1,6 +1,8 @@
 "use client";
 
 import { Crosshair, Flame, Pencil, X } from "lucide-react";
+import type { MapUrlState } from "@/lib/map/url-state";
+import { MapShareButton } from "./MapShareButton";
 
 interface MapControlsProps {
   heatmapOn: boolean;
@@ -10,6 +12,8 @@ interface MapControlsProps {
   onFitResults: () => void;
   onClearDraw: () => void;
   hasDrawnArea: boolean;
+  pathname: string;
+  getShareState: () => MapUrlState;
 }
 
 export function MapControls({
@@ -20,12 +24,19 @@ export function MapControls({
   onFitResults,
   onClearDraw,
   hasDrawnArea,
+  pathname,
+  getShareState,
 }: MapControlsProps) {
   const btn =
     "flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white/95 px-2.5 py-2 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-sm transition hover:bg-white";
 
   return (
     <div className="absolute right-3 top-3 z-10 flex flex-col gap-2">
+      <MapShareButton
+        pathname={pathname}
+        getState={getShareState}
+        className={btn}
+      />
       <button type="button" className={btn} onClick={onFitResults} title="Fit map to results">
         <Crosshair className="h-3.5 w-3.5" aria-hidden />
         Fit results

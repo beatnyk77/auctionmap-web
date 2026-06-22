@@ -5,7 +5,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { buildListingsQuery } from "@/lib/filters";
-import { hasUrlFilters, parseMapUrlState, serializeMapUrlState } from "@/lib/map/url-state";
+import {
+  hasUrlFilters,
+  parseMapUrlState,
+  serializeMapUrlState,
+  type MapUrlState,
+} from "@/lib/map/url-state";
 import { CITY_CENTERS, DEFAULT_ZOOM, INDIA_CENTER } from "@/lib/map/constants";
 import type { SheetSnap } from "@/lib/map/sheet-snap";
 import type { Bbox, ListingFilters, ListingPublic } from "@/lib/types";
@@ -262,6 +267,17 @@ export function MapExplorer({
     [filters, effectiveBbox],
   );
 
+  const getShareState = useCallback(
+    (): MapUrlState => ({
+      filters,
+      bbox: effectiveBbox,
+      center: urlViewportRef.current.center,
+      zoom: urlViewportRef.current.zoom,
+      activeId: selectedId,
+    }),
+    [filters, effectiveBbox, selectedId],
+  );
+
   const listingsPanelProps = {
     listings: sorted,
     filters,
@@ -291,6 +307,8 @@ export function MapExplorer({
             onFitResults={() => setFitRequest((n) => n + 1)}
             onClearDraw={handleClearDraw}
             hasDrawnArea={drawnBbox != null}
+            pathname={pathname}
+            getShareState={getShareState}
           />
           <MapLegend />
           <MapView

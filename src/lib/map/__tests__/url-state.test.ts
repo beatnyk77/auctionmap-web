@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildListingMapHref,
+  buildMapShareUrl,
   LISTING_MAP_ZOOM,
   parseMapUrlState,
   serializeMapUrlState,
@@ -55,5 +56,22 @@ describe("map url state", () => {
     expect(parsed.filters.city).toBe("Indore");
     expect(parsed.center).toBeNull();
     expect(parsed.zoom).toBeNull();
+  });
+
+  it("builds absolute share URL with viewport and filters", () => {
+    const url = buildMapShareUrl("https://auctionmap.in", "/", {
+      filters: { city: "Bhopal", riskTier: "Green" },
+      bbox: { minLng: 77.3, minLat: 23.2, maxLng: 77.5, maxLat: 23.3 },
+      center: [77.41, 23.26],
+      zoom: 12,
+      activeId: "prop-1",
+    });
+
+    expect(url).toMatch(/^https:\/\/auctionmap\.in\/\?/);
+    const parsed = parseMapUrlState(new URL(url).searchParams);
+    expect(parsed.filters.city).toBe("Bhopal");
+    expect(parsed.filters.riskTier).toBe("Green");
+    expect(parsed.activeId).toBe("prop-1");
+    expect(parsed.zoom).toBe(12);
   });
 });

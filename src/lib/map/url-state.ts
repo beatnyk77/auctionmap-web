@@ -122,6 +122,18 @@ export function buildListingMapHref(input: ListingMapLinkInput): string {
   return qs ? `/?${qs}` : "/";
 }
 
+/** Absolute URL for sharing the current map view (filters, bbox, viewport, listing). */
+export function buildMapShareUrl(
+  origin: string,
+  pathname: string,
+  state: MapUrlState,
+): string {
+  const qs = serializeMapUrlState(state);
+  const path = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  const base = origin.replace(/\/$/, "");
+  return qs ? `${base}${path}?${qs}` : `${base}${path}`;
+}
+
 export function hasUrlFilters(params: URLSearchParams): boolean {
   const keys = [
     "state",
