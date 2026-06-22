@@ -24,7 +24,9 @@ Open [http://localhost:3000](http://localhost:3000).
 |-------|-------------|
 | `/` | Full-screen map + sidebar listings (pins by risk tier) |
 | `/search` | Filterable list/table view |
-| `/property/[id]` | Listing detail from `listing_detail_public` |
+| `/property/[id]` | Listing detail + risk panel, price history, circle rate |
+| `/alerts` | Email alert subscription form |
+| `/brief` | Weekly inventory snapshot for advisors |
 
 ## API routes
 

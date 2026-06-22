@@ -9,7 +9,16 @@ import {
   Shield,
 } from "lucide-react";
 import { fetchListingDetail } from "@/lib/listings";
+import {
+  circleRateDiscount,
+  deriveRiskReasons,
+  fetchPriceHistory,
+  fetchPriceSignals,
+} from "@/lib/intelligence";
 import { RiskBadge } from "@/components/listings/RiskBadge";
+import { RiskDetailPanel } from "@/components/intelligence/RiskDetailPanel";
+import { PriceHistoryChart } from "@/components/intelligence/PriceHistoryChart";
+import { CircleRateBadge } from "@/components/intelligence/CircleRateBadge";
 import { formatDate, formatLakhs, formatSqftRate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +32,17 @@ export default async function PropertyPage({
   const listing = await fetchListingDetail(id).catch(() => null);
 
   if (!listing) notFound();
+
+  const [history, signals] = await Promise.all([
+    fetchPriceHistory(id).catch(() => []),
+    fetchPriceSignals(id).catch(() => null),
+  ]);
+
+  const riskReasons = deriveRiskReasons(listing);
+  const circleDiscount = circleRateDiscount(
+    listing.price_per_sqft,
+    listing.circle_rate_per_sqft,
+  );
 
   const location = [listing.locality, listing.city, listing.state]
     .filter(Boolean)
@@ -49,14 +69,38 @@ export default async function PropertyPage({
               </p>
             )}
           </div>
-          <RiskBadge tier={listing.risk_tier} />
+          <div className="flex flex-wrap items-center gap-2">
+            <RiskBadge tier={listing.risk_tier} />
+            {circleDiscount != null && <CircleRateBadge discountPct={circleDiscount} />}
+          </div>
         </div>
+
+        <RiskDetailPanel
+          tier={listing.risk_tier}
+          reasons={riskReasons}
+          completenessScore={listing.completeness_score}
+        />
 
         <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Stat label="Reserve price" value={formatLakhs(listing.reserve_price_lakhs)} />
           <Stat label="EMD" value={formatLakhs(listing.emd_lakhs)} />
           <Stat label="Auction date" value={formatDate(listing.auction_date)} icon={Calendar} />
           <Stat label="₹/sqft" value={formatSqftRate(listing.price_per_sqft)} />
+        </div>
+
+        {listing.circle_rate_per_sqft != null && (
+          <p className="mb-6 text-sm text-slate-600">
+            Circle/guidance rate: {formatSqftRate(listing.circle_rate_per_sqft)}
+            {circleDiscount != null && circleDiscount >= 10 && (
+              <span className="ml-2 font-medium text-emerald-700">
+                Reserve is {circleDiscount}% below circle rate
+              </span>
+            )}
+          </p>
+        )}
+
+        <div className="mb-6">
+          <PriceHistoryChart history={history} signals={signals} />
         </div>
 
         <div className="mb-6 grid gap-4 sm:grid-cols-2">
