@@ -8,23 +8,25 @@ interface ListingCardProps {
   listing: ListingPublic;
   active?: boolean;
   onHover?: () => void;
+  /** Map sidebar: select on card click instead of navigating away */
+  onSelect?: () => void;
 }
 
-export function ListingCard({ listing, active, onHover }: ListingCardProps) {
+function cardSurfaceClass(active?: boolean): string {
+  return `rounded-xl border transition-all ${
+    active
+      ? "border-slate-900 bg-slate-50 shadow-sm"
+      : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
+  }`;
+}
+
+function ListingCardBody({ listing }: { listing: ListingPublic }) {
   const location = [listing.locality, listing.city, listing.state]
     .filter(Boolean)
     .join(", ");
 
   return (
-    <Link
-      href={`/property/${listing.property_id}`}
-      onMouseEnter={onHover}
-      className={`block rounded-xl border p-4 transition-all ${
-        active
-          ? "border-slate-900 bg-slate-50 shadow-sm"
-          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
-      }`}
-    >
+    <>
       <div className="mb-2 flex items-start justify-between gap-2">
         <h3 className="line-clamp-2 text-sm font-semibold text-slate-900">
           {listing.display_name}
@@ -60,6 +62,49 @@ export function ListingCard({ listing, active, onHover }: ListingCardProps) {
           {formatSqftRate(listing.price_per_sqft)}
         </p>
       )}
+    </>
+  );
+}
+
+export function listingDetailHref(propertyId: string): string {
+  return `/property/${propertyId}`;
+}
+
+export function ListingCard({ listing, active, onHover, onSelect }: ListingCardProps) {
+  const href = listingDetailHref(listing.property_id);
+
+  if (onSelect) {
+    return (
+      <div className={cardSurfaceClass(active)} data-testid="listing-card-preview">
+        <button
+          type="button"
+          onClick={onSelect}
+          onMouseEnter={onHover}
+          className="block w-full rounded-xl p-4 text-left"
+          aria-pressed={active}
+        >
+          <ListingCardBody listing={listing} />
+        </button>
+        <div className="border-t border-slate-100 px-4 py-2.5">
+          <Link
+            href={href}
+            className="text-xs font-medium text-slate-700 underline-offset-2 hover:text-slate-900 hover:underline"
+          >
+            View details →
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      href={href}
+      onMouseEnter={onHover}
+      data-testid="listing-card-link"
+      className={`block p-4 ${cardSurfaceClass(active)}`}
+    >
+      <ListingCardBody listing={listing} />
     </Link>
   );
 }

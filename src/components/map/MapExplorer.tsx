@@ -196,6 +196,11 @@ export function MapExplorer({
     [],
   );
 
+  const handleCardSelect = useCallback((listing: ListingPublic) => {
+    setSelectedId(listing.property_id);
+    mapRef.current?.flyToListing(listing);
+  }, []);
+
   const handleBboxChange = useCallback((next: Bbox) => {
     setBbox((prev) => {
       if (!prev) return next;
@@ -319,6 +324,7 @@ export function MapExplorer({
                 listing={listing}
                 active={listing.property_id === activeId}
                 onHover={() => handleCardHover(listing)}
+                onSelect={() => handleCardSelect(listing)}
               />
             </div>
           ))}
