@@ -23,8 +23,7 @@ export default async function HomePage() {
           <p className="mt-2 text-sm text-amber-800">{setupError}</p>
           <p className="mt-4 text-xs text-amber-700">
             Copy <code className="rounded bg-white px-1">.env.local.example</code> to{" "}
-            <code className="rounded bg-white px-1">.env.local</code> and add your Supabase +
-            Mapbox keys.
+            <code className="rounded bg-white px-1">.env.local</code> and add your Supabase keys.
           </p>
         </div>
       </div>

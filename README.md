@@ -2,7 +2,7 @@
 
 MVP map + search frontend for distressed bank auction properties in India.
 
-**Stack:** Next.js 16 · Mapbox GL · Supabase (read-only views + RPC)
+**Stack:** Next.js 16 · MapLibre GL · Supabase (read-only views + RPC)
 
 **Data source:** [auctionmap-pipeline](https://github.com/beatnyk77/AuctionMap) writes to Supabase; this app reads `listings_public` and `listings_in_bbox`.
 
@@ -10,7 +10,7 @@ MVP map + search frontend for distressed bank auction properties in India.
 
 ```bash
 cp .env.local.example .env.local
-# Add NEXT_PUBLIC_SUPABASE_ANON_KEY and NEXT_PUBLIC_MAPBOX_TOKEN
+# Add NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 npm install
 npm run dev
