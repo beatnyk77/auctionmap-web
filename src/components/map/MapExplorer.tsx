@@ -4,17 +4,17 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { ListingCard } from "@/components/listings/ListingCard";
-import { FilterBar } from "@/components/filters/FilterBar";
-import { SaveSearchButton } from "@/components/workflow/SaveSearchButton";
 import { buildListingsQuery } from "@/lib/filters";
 import { hasUrlFilters, parseMapUrlState, serializeMapUrlState } from "@/lib/map/url-state";
 import { CITY_CENTERS, DEFAULT_ZOOM, INDIA_CENTER } from "@/lib/map/constants";
+import type { SheetSnap } from "@/lib/map/sheet-snap";
 import type { Bbox, ListingFilters, ListingPublic } from "@/lib/types";
 import { MapControls } from "./MapControls";
 import { MapErrorBoundary } from "./MapErrorBoundary";
 import { MapGeocodeSearch, type GeocodeResult } from "./MapGeocodeSearch";
 import { MapLegend } from "./MapLegend";
+import { MapListingsPanel } from "./MapListingsPanel";
+import { MapListingsSheet } from "./MapListingsSheet";
 import { MapSkeleton } from "./MapSkeleton";
 import type { MapViewHandle } from "./MapView";
 
@@ -69,6 +69,9 @@ export function MapExplorer({
   const [drawnBbox, setDrawnBbox] = useState<Bbox | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(urlParsed.activeId);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [sheetSnap, setSheetSnap] = useState<SheetSnap>(
+    urlParsed.activeId ? "half" : "collapsed",
+  );
   const [viewScope, setViewScope] = useState<ViewScope>(
     urlParsed.bbox ? "viewport" : "all",
   );
@@ -95,6 +98,7 @@ export function MapExplorer({
 
   const activeId = hoveredId ?? selectedId;
   const effectiveBbox = drawnBbox ?? bbox;
+  const scopeSubtitle = scopeLabel(viewScope, filters.city);
 
   const fetchListings = useCallback(async () => {
     fetchAbortRef.current?.abort();
@@ -193,6 +197,7 @@ export function MapExplorer({
   const handleMarkerClick = useCallback(
     (listing: ListingPublic) => {
       setSelectedId(listing.property_id);
+      setSheetSnap("half");
       scrollToCard(listing.property_id);
     },
     [scrollToCard],
@@ -202,16 +207,14 @@ export function MapExplorer({
     setHoveredId(listing?.property_id ?? null);
   }, []);
 
-  const handleCardHover = useCallback(
-    (listing: ListingPublic) => {
-      setHoveredId(listing.property_id);
-      mapRef.current?.flyToListing(listing);
-    },
-    [],
-  );
+  const handleCardHover = useCallback((listing: ListingPublic) => {
+    setHoveredId(listing.property_id);
+    mapRef.current?.flyToListing(listing);
+  }, []);
 
   const handleCardSelect = useCallback((listing: ListingPublic) => {
     setSelectedId(listing.property_id);
+    setSheetSnap("half");
     mapRef.current?.flyToListing(listing);
   }, []);
 
@@ -259,9 +262,25 @@ export function MapExplorer({
     [filters, effectiveBbox],
   );
 
+  const listingsPanelProps = {
+    listings: sorted,
+    filters,
+    onFiltersChange: setFilters,
+    savedFilters,
+    isAuthenticated,
+    listingCount: sorted.length,
+    scopeSubtitle,
+    loading,
+    error,
+    activeId,
+    cardRefs,
+    onCardHover: handleCardHover,
+    onCardSelect: handleCardSelect,
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-      <div className="relative min-h-[45vh] flex-1 lg:min-h-0">
+      <div className="relative min-h-0 flex-1">
         <MapErrorBoundary>
           <MapGeocodeSearch onSelect={handleGeocodeSelect} />
           <MapControls
@@ -292,57 +311,24 @@ export function MapExplorer({
           />
         </MapErrorBoundary>
         {loading && (
-          <div className="absolute left-3 top-[4.5rem] flex items-center gap-2 rounded-lg bg-white/95 px-3 py-2 text-xs text-slate-600 shadow-sm">
+          <div className="absolute left-3 top-[4.5rem] z-30 flex items-center gap-2 rounded-lg bg-white/95 px-3 py-2 text-xs text-slate-600 shadow-sm">
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
             Updating…
           </div>
         )}
+
+        <MapListingsSheet
+          snap={sheetSnap}
+          onSnapChange={setSheetSnap}
+          title={`${sorted.length} listings`}
+          subtitle={scopeSubtitle}
+        >
+          <MapListingsPanel {...listingsPanelProps} />
+        </MapListingsSheet>
       </div>
 
-      <aside className="flex w-full flex-col border-t border-slate-200 bg-slate-50 lg:w-[380px] lg:border-l lg:border-t-0">
-        <div className="border-b border-slate-200 p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-900">
-                {sorted.length} listings
-              </h2>
-              <p className="text-[11px] text-slate-500">
-                {scopeLabel(viewScope, filters.city)}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <SaveSearchButton filters={savedFilters} isAuthenticated={isAuthenticated} />
-              <p className="hidden text-[11px] text-slate-500 sm:block">Updated daily 6 AM IST</p>
-            </div>
-          </div>
-          <FilterBar filters={filters} onChange={setFilters} compact />
-        </div>
-
-        <div className="flex-1 space-y-3 overflow-y-auto p-3">
-          {error && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
-          )}
-          {!error && sorted.length === 0 && !loading && (
-            <p className="px-2 py-8 text-center text-sm text-slate-500">
-              No map-ready listings in this area yet. Pan the map or clear filters to see more.
-            </p>
-          )}
-          {sorted.map((listing) => (
-            <div
-              key={listing.property_id}
-              ref={(el) => {
-                cardRefs.current[listing.property_id] = el;
-              }}
-            >
-              <ListingCard
-                listing={listing}
-                active={listing.property_id === activeId}
-                onHover={() => handleCardHover(listing)}
-                onSelect={() => handleCardSelect(listing)}
-              />
-            </div>
-          ))}
-        </div>
+      <aside className="hidden w-[380px] shrink-0 flex-col border-l border-slate-200 bg-slate-50 lg:flex">
+        <MapListingsPanel {...listingsPanelProps} />
       </aside>
     </div>
   );
