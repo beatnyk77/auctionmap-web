@@ -27,6 +27,12 @@ Open [http://localhost:3000](http://localhost:3000).
 | `/property/[id]` | Listing detail + risk panel, price history, circle rate |
 | `/alerts` | Email alert subscription form |
 | `/brief` | Weekly inventory snapshot for advisors |
+| `/pricing` | Free / Pro / white-label plan comparison |
+| `/settings` | Plan usage, white-label branding (Pro+) |
+| `/deals` | Deal pipeline (auth) |
+| `/saved` | Saved searches (auth) |
+
+**White-label:** visit `?tenant=demo` locally or `demo.auctionmap.in` in production for branded subdomain + territory filters.
 
 ## API routes
 

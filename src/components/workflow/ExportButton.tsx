@@ -8,9 +8,14 @@ import type { ListingFilters } from "@/lib/types";
 interface ExportButtonProps {
   filters: ListingFilters;
   isAuthenticated: boolean;
+  isPro: boolean;
 }
 
-export function ExportButton({ filters, isAuthenticated }: ExportButtonProps) {
+export function ExportButton({
+  filters,
+  isAuthenticated,
+  isPro,
+}: ExportButtonProps) {
   const query = buildListingsQuery(filters);
 
   if (!isAuthenticated) {
@@ -21,6 +26,18 @@ export function ExportButton({ filters, isAuthenticated }: ExportButtonProps) {
       >
         <Download className="h-4 w-4" aria-hidden />
         Sign in to export
+      </Link>
+    );
+  }
+
+  if (!isPro) {
+    return (
+      <Link
+        href="/pricing"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+      >
+        <Download className="h-4 w-4" aria-hidden />
+        Pro export
       </Link>
     );
   }

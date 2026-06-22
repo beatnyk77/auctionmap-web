@@ -15,11 +15,13 @@ import { ExportButton } from "@/components/workflow/ExportButton";
 interface SearchExplorerProps {
   initialListings: ListingPublic[];
   isAuthenticated?: boolean;
+  isPro?: boolean;
 }
 
 export function SearchExplorer({
   initialListings,
   isAuthenticated = false,
+  isPro = false,
 }: SearchExplorerProps) {
   const [listings, setListings] = useState(initialListings);
   const [filters, setFilters] = useState<ListingFilters>({});
@@ -59,7 +61,11 @@ export function SearchExplorer({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <SaveSearchButton filters={filters} isAuthenticated={isAuthenticated} />
-          <ExportButton filters={filters} isAuthenticated={isAuthenticated} />
+          <ExportButton
+            filters={filters}
+            isAuthenticated={isAuthenticated}
+            isPro={isPro}
+          />
           <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
           <button
             type="button"

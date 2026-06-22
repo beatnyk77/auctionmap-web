@@ -71,13 +71,13 @@ export function SavedSearchesList({ initialSearches }: SavedSearchesListProps) {
                 <Play className="h-4 w-4" aria-hidden />
                 Run
               </Link>
-              <a
-                href={`/api/export?${query}`}
+              <Link
+                href={`/search?${query}`}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 <Download className="h-4 w-4" aria-hidden />
-                CSV
-              </a>
+                Export via search
+              </Link>
               <button
                 type="button"
                 disabled={busyId === search.id}

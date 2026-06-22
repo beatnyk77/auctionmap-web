@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { applyTenantContext } from "@/lib/tenant-middleware";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -8,7 +9,7 @@ export async function updateSession(request: NextRequest) {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!url || !key) {
-    return supabaseResponse;
+    return applyTenantContext(request, supabaseResponse);
   }
 
   const supabase = createServerClient(url, key, {
@@ -36,8 +37,10 @@ export async function updateSession(request: NextRequest) {
   const isProtected =
     path.startsWith("/deals") ||
     path.startsWith("/saved") ||
+    path.startsWith("/settings") ||
     path.startsWith("/api/export") ||
-    path.startsWith("/api/workflow");
+    path.startsWith("/api/workflow") ||
+    path.startsWith("/api/billing");
 
   if (isProtected && !user) {
     const redirectUrl = request.nextUrl.clone();
@@ -53,5 +56,5 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  return supabaseResponse;
+  return applyTenantContext(request, supabaseResponse);
 }

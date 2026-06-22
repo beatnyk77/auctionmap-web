@@ -1,4 +1,5 @@
 import { createServerSupabase } from "./supabase/server";
+import { getActiveTenant, mergeTenantFilters } from "./tenant";
 import type { Bbox, ListingDetail, ListingFilters, ListingPublic } from "./types";
 
 const DEFAULT_BBOX: Bbox = {
@@ -32,6 +33,8 @@ export async function fetchListingsInBbox(
   filters: ListingFilters = {},
   limit = 500,
 ): Promise<ListingPublic[]> {
+  const tenant = await getActiveTenant();
+  const mergedFilters = mergeTenantFilters(filters, tenant);
   const supabase = await createServerSupabase();
 
   const { data, error } = await supabase.rpc("listings_in_bbox", {
@@ -39,13 +42,13 @@ export async function fetchListingsInBbox(
     min_lat: bbox.minLat,
     max_lng: bbox.maxLng,
     max_lat: bbox.maxLat,
-    filter_state: filters.state ?? null,
-    filter_type: filters.propertyType ?? null,
+    filter_state: mergedFilters.state ?? null,
+    filter_type: mergedFilters.propertyType ?? null,
     row_limit: limit,
   });
 
   if (error) throw new Error(error.message);
-  return applyClientFilters((data ?? []) as ListingPublic[], filters);
+  return applyClientFilters((data ?? []) as ListingPublic[], mergedFilters);
 }
 
 export async function fetchListingDetail(

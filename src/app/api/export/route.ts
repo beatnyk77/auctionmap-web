@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/workflow";
+import { requireProPlan } from "@/lib/billing";
 import { fetchAllListings } from "@/lib/listings";
 import type { ListingFilters, RiskTier } from "@/lib/types";
 
@@ -14,7 +14,7 @@ function escapeCsv(value: string | number | null | undefined): string {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireUser();
+    await requireProPlan();
 
     const { searchParams } = request.nextUrl;
     const filters: ListingFilters = {
@@ -89,7 +89,8 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    const status = message === "Unauthorized" ? 401 : 500;
+    const status =
+      message === "Unauthorized" || message === "Pro plan required" ? 403 : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }

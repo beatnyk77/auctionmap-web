@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { assertPipelineDealLimit } from "@/lib/billing";
 import { requireUser } from "@/lib/workflow";
 import type { PipelineStage } from "@/lib/workflow-types";
 
@@ -16,7 +17,12 @@ export async function GET() {
     return NextResponse.json({ deals: data ?? [] });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    const status = message === "Unauthorized" ? 401 : 500;
+    const status =
+      message === "Unauthorized"
+        ? 401
+        : message.includes("Free plan allows")
+          ? 403
+          : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }
@@ -33,6 +39,17 @@ export async function POST(request: NextRequest) {
     }
     if (!STAGES.has(stage)) {
       return NextResponse.json({ error: "Invalid stage" }, { status: 400 });
+    }
+
+    const { data: existing } = await supabase
+      .from("pipeline_deals")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("property_id", propertyId)
+      .maybeSingle();
+
+    if (!existing) {
+      await assertPipelineDealLimit();
     }
 
     const { data, error } = await supabase
@@ -53,7 +70,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ deal: data });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    const status = message === "Unauthorized" ? 401 : 500;
+    const status =
+      message === "Unauthorized"
+        ? 401
+        : message.includes("Free plan allows")
+          ? 403
+          : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }

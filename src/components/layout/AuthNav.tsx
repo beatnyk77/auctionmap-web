@@ -32,7 +32,13 @@ export function AuthNav({ email }: AuthNavProps) {
 
   return (
     <div className="flex items-center gap-2">
-      <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:flex">
+      <Link
+        href="/settings"
+        className="hidden rounded-lg px-2.5 py-2 text-sm text-slate-600 hover:bg-slate-100 sm:inline"
+      >
+        Settings
+      </Link>
+      <span className="hidden items-center gap-1.5 text-xs text-slate-500 md:flex">
         <User className="h-3.5 w-3.5" aria-hidden />
         {email}
       </span>
