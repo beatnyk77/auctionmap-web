@@ -19,6 +19,7 @@ import { RiskBadge } from "@/components/listings/RiskBadge";
 import { RiskDetailPanel } from "@/components/intelligence/RiskDetailPanel";
 import { PriceHistoryChart } from "@/components/intelligence/PriceHistoryChart";
 import { CircleRateBadge } from "@/components/intelligence/CircleRateBadge";
+import { buildListingMapHref } from "@/lib/map/url-state";
 import { formatDate, formatLakhs, formatSqftRate } from "@/lib/utils";
 import { getSessionUser } from "@/lib/auth";
 import {
@@ -58,15 +59,32 @@ export default async function PropertyPage({
     .filter(Boolean)
     .join(", ");
 
+  const mapHref = buildListingMapHref({
+    propertyId: id,
+    lon: listing.lon,
+    lat: listing.lat,
+    city: listing.city,
+    state: listing.state,
+  });
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-6">
-      <Link
-        href="/"
-        className="mb-6 inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900"
-      >
-        <ArrowLeft className="h-4 w-4" aria-hidden />
-        Back to map
-      </Link>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href={mapHref}
+          className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          Back to map
+        </Link>
+        <Link
+          href={mapHref}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+        >
+          <MapPin className="h-4 w-4" aria-hidden />
+          View on map
+        </Link>
+      </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">

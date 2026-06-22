@@ -81,6 +81,47 @@ export function serializeMapUrlState(state: MapUrlState): string {
   return params.toString();
 }
 
+/** Zoom used when opening the map focused on a single listing. */
+export const LISTING_MAP_ZOOM = 14;
+
+export interface ListingMapLinkInput {
+  propertyId: string;
+  lon?: number | null;
+  lat?: number | null;
+  city?: string | null;
+  state?: string | null;
+  zoom?: number;
+}
+
+function hasValidCoords(lon?: number | null, lat?: number | null): lon is number {
+  return (
+    lon != null &&
+    lat != null &&
+    !Number.isNaN(lon) &&
+    !Number.isNaN(lat)
+  );
+}
+
+/** Deep link from property detail back to map with pin selected. */
+export function buildListingMapHref(input: ListingMapLinkInput): string {
+  const coords = hasValidCoords(input.lon, input.lat)
+    ? ([input.lon, input.lat] as [number, number])
+    : null;
+
+  const qs = serializeMapUrlState({
+    filters: {
+      city: input.city ?? undefined,
+      state: input.state ?? undefined,
+    },
+    bbox: null,
+    center: coords,
+    zoom: coords ? (input.zoom ?? LISTING_MAP_ZOOM) : null,
+    activeId: input.propertyId,
+  });
+
+  return qs ? `/?${qs}` : "/";
+}
+
 export function hasUrlFilters(params: URLSearchParams): boolean {
   const keys = [
     "state",

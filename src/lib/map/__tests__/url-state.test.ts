@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseMapUrlState, serializeMapUrlState } from "../url-state";
+import {
+  buildListingMapHref,
+  LISTING_MAP_ZOOM,
+  parseMapUrlState,
+  serializeMapUrlState,
+} from "../url-state";
 
 describe("map url state", () => {
   it("round-trips filters and bbox", () => {
@@ -18,5 +23,37 @@ describe("map url state", () => {
     expect(serialized).toContain("city=Bhopal");
     expect(serialized).toContain("risk=Green");
     expect(serialized).toContain("listing=abc");
+  });
+
+  it("builds property deep link with listing, coords, and city filter", () => {
+    const href = buildListingMapHref({
+      propertyId: "prop-99",
+      lon: 77.4126,
+      lat: 23.2599,
+      city: "Bhopal",
+      state: "Madhya Pradesh",
+    });
+
+    expect(href).toMatch(/^\/\?/);
+    const parsed = parseMapUrlState(new URLSearchParams(href.slice(2)));
+    expect(parsed.activeId).toBe("prop-99");
+    expect(parsed.filters.city).toBe("Bhopal");
+    expect(parsed.filters.state).toBe("Madhya Pradesh");
+    expect(parsed.center?.[0]).toBeCloseTo(77.4126);
+    expect(parsed.center?.[1]).toBeCloseTo(23.2599);
+    expect(parsed.zoom).toBe(LISTING_MAP_ZOOM);
+  });
+
+  it("builds listing-only deep link when coordinates are missing", () => {
+    const href = buildListingMapHref({
+      propertyId: "prop-orphan",
+      city: "Indore",
+    });
+
+    const parsed = parseMapUrlState(new URLSearchParams(href.slice(2)));
+    expect(parsed.activeId).toBe("prop-orphan");
+    expect(parsed.filters.city).toBe("Indore");
+    expect(parsed.center).toBeNull();
+    expect(parsed.zoom).toBeNull();
   });
 });

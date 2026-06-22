@@ -84,6 +84,8 @@ export function MapExplorer({
   } | null>(null);
 
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const deepLinkScrollIdRef = useRef(urlParsed.activeId);
+  const skipInitialCityFlyToRef = useRef(urlParsed.center != null);
   const fetchAbortRef = useRef<AbortController | null>(null);
   const skipInitialFetchRef = useRef(
     initialListings.length > 0 && !hasUrlFilters(searchParams),
@@ -129,6 +131,10 @@ export function MapExplorer({
 
   useEffect(() => {
     if (!filters.city) return;
+    if (skipInitialCityFlyToRef.current) {
+      skipInitialCityFlyToRef.current = false;
+      return;
+    }
     const match = Object.entries(CITY_CENTERS).find(
       ([name]) => name.toLowerCase() === filters.city!.toLowerCase(),
     );
@@ -175,6 +181,14 @@ export function MapExplorer({
       block: "nearest",
     });
   }, []);
+
+  useEffect(() => {
+    const propertyId = deepLinkScrollIdRef.current;
+    if (!propertyId) return;
+    deepLinkScrollIdRef.current = null;
+    const timer = setTimeout(() => scrollToCard(propertyId), 500);
+    return () => clearTimeout(timer);
+  }, [scrollToCard]);
 
   const handleMarkerClick = useCallback(
     (listing: ListingPublic) => {
