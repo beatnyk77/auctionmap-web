@@ -49,8 +49,8 @@ interface MapViewProps {
   onDrawComplete?: (bbox: Bbox) => void;
   showHeatmap?: boolean;
   drawnBbox?: Bbox | null;
-  initialCenter?: [number, number];
-  initialZoom?: number;
+  /** Read once at mount — do not change after init or the map will remount. */
+  bootstrap?: { center: [number, number]; zoom: number };
   fitRequest?: number;
   geocodeTarget?: { lng: number; lat: number; token: number } | null;
 }
@@ -110,13 +110,13 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     onDrawComplete,
     showHeatmap = false,
     drawnBbox = null,
-    initialCenter = INDIA_CENTER,
-    initialZoom = DEFAULT_ZOOM,
+    bootstrap,
     fitRequest = 0,
     geocodeTarget = null,
   },
   ref,
 ) {
+  const bootstrapRef = useRef(bootstrap ?? { center: INDIA_CENTER, zoom: DEFAULT_ZOOM });
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -172,13 +172,15 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     if (!containerRef.current || mapRef.current) return;
 
     let cancelled = false;
+    let fallbackAttempted = false;
+    const { center, zoom } = bootstrapRef.current;
 
     const initMap = (style: string) => {
       const map = new maplibregl.Map({
         container: containerRef.current!,
         style,
-        center: initialCenter,
-        zoom: initialZoom,
+        center,
+        zoom,
         attributionControl: { compact: true },
       });
 
@@ -190,15 +192,25 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         className: "auctionmap-popup",
       });
 
+      let lastBboxKey = "";
       const emitBbox = () => {
         const bounds = map.getBounds();
         if (!bounds) return;
-        onBboxChangeRef.current?.({
+        const next = {
           minLng: bounds.getWest(),
           minLat: bounds.getSouth(),
           maxLng: bounds.getEast(),
           maxLat: bounds.getNorth(),
-        });
+        };
+        const key = [
+          next.minLng.toFixed(4),
+          next.minLat.toFixed(4),
+          next.maxLng.toFixed(4),
+          next.maxLat.toFixed(4),
+        ].join(",");
+        if (key === lastBboxKey) return;
+        lastBboxKey = key;
+        onBboxChangeRef.current?.(next);
       };
 
       map.on("load", () => {
@@ -211,15 +223,18 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       });
 
       map.on("error", () => {
-        if (cancelled) return;
-        if (style === MAP_STYLE_PRIMARY) {
+        if (cancelled || map.isStyleLoaded()) return;
+        if (style === MAP_STYLE_PRIMARY && !fallbackAttempted) {
+          fallbackAttempted = true;
           map.remove();
           mapRef.current = null;
           initMap(MAP_STYLE_FALLBACK);
           return;
         }
-        setMapError("Map tiles could not be loaded.");
-        setTilesLoading(false);
+        if (!map.isStyleLoaded()) {
+          setMapError("Map tiles could not be loaded.");
+          setTilesLoading(false);
+        }
       });
 
       map.on("moveend", emitBbox);
@@ -284,7 +299,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       mapRef.current = null;
       setMapReady(false);
     };
-  }, [initialCenter, initialZoom]);
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;

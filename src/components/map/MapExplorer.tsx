@@ -27,6 +27,10 @@ interface MapExplorerProps {
   isAuthenticated?: boolean;
 }
 
+function bboxCenter(bbox: Bbox): [number, number] {
+  return [(bbox.minLng + bbox.maxLng) / 2, (bbox.minLat + bbox.maxLat) / 2];
+}
+
 export function MapExplorer({
   initialListings,
   isAuthenticated = false,
@@ -35,6 +39,11 @@ export function MapExplorer({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const urlParsed = useMemo(() => parseMapUrlState(searchParams), [searchParams]);
+
+  const mapBootstrap = useRef({
+    center: urlParsed.center ?? INDIA_CENTER,
+    zoom: urlParsed.zoom ?? DEFAULT_ZOOM,
+  });
 
   const [listings, setListings] = useState(initialListings);
   const [filters, setFilters] = useState<ListingFilters>(urlParsed.filters);
@@ -51,10 +60,6 @@ export function MapExplorer({
     lat: number;
     token: number;
   } | null>(null);
-  const [mapCenter, setMapCenter] = useState<[number, number]>(
-    urlParsed.center ?? INDIA_CENTER,
-  );
-  const [mapZoom, setMapZoom] = useState(urlParsed.zoom ?? DEFAULT_ZOOM);
 
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const fetchAbortRef = useRef<AbortController | null>(null);
@@ -62,6 +67,7 @@ export function MapExplorer({
     initialListings.length > 0 && !hasUrlFilters(searchParams),
   );
   const urlSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSyncedUrlRef = useRef<string>("");
 
   const effectiveBbox = drawnBbox ?? bbox;
 
@@ -99,20 +105,23 @@ export function MapExplorer({
   useEffect(() => {
     if (urlSyncTimerRef.current) clearTimeout(urlSyncTimerRef.current);
     urlSyncTimerRef.current = setTimeout(() => {
+      const center = effectiveBbox ? bboxCenter(effectiveBbox) : mapBootstrap.current.center;
       const qs = serializeMapUrlState({
         filters,
         bbox: effectiveBbox,
-        center: mapCenter,
-        zoom: mapZoom,
+        center,
+        zoom: mapBootstrap.current.zoom,
         activeId,
       });
       const next = qs ? `${pathname}?${qs}` : pathname;
+      if (next === lastSyncedUrlRef.current) return;
+      lastSyncedUrlRef.current = next;
       router.replace(next, { scroll: false });
-    }, 450);
+    }, 600);
     return () => {
       if (urlSyncTimerRef.current) clearTimeout(urlSyncTimerRef.current);
     };
-  }, [filters, effectiveBbox, mapCenter, mapZoom, activeId, pathname, router]);
+  }, [filters, effectiveBbox, activeId, pathname, router]);
 
   const sorted = useMemo(
     () =>
@@ -148,8 +157,16 @@ export function MapExplorer({
   }, []);
 
   const handleBboxChange = useCallback((next: Bbox) => {
-    setBbox(next);
-    setMapCenter([(next.minLng + next.maxLng) / 2, (next.minLat + next.maxLat) / 2]);
+    setBbox((prev) => {
+      if (!prev) return next;
+      const epsilon = 0.0001;
+      const unchanged =
+        Math.abs(prev.minLng - next.minLng) < epsilon &&
+        Math.abs(prev.minLat - next.minLat) < epsilon &&
+        Math.abs(prev.maxLng - next.maxLng) < epsilon &&
+        Math.abs(prev.maxLat - next.maxLat) < epsilon;
+      return unchanged ? prev : next;
+    });
   }, []);
 
   const handleDrawComplete = useCallback((next: Bbox) => {
@@ -160,8 +177,8 @@ export function MapExplorer({
 
   const handleGeocodeSelect = useCallback((result: GeocodeResult) => {
     setGeocodeTarget({ lng: result.lng, lat: result.lat, token: Date.now() });
-    setMapCenter([result.lng, result.lat]);
-    setMapZoom(12);
+    mapBootstrap.current.center = [result.lng, result.lat];
+    mapBootstrap.current.zoom = 12;
   }, []);
 
   const savedFilters: ListingFilters = useMemo(
@@ -193,6 +210,7 @@ export function MapExplorer({
           <MapView
             listings={listings}
             activeId={activeId}
+            bootstrap={mapBootstrap.current}
             onBboxChange={handleBboxChange}
             onMarkerClick={handleMarkerClick}
             onListingHover={handleListingHover}
@@ -200,8 +218,6 @@ export function MapExplorer({
             onDrawComplete={handleDrawComplete}
             showHeatmap={heatmapOn}
             drawnBbox={drawnBbox}
-            initialCenter={mapCenter}
-            initialZoom={mapZoom}
             fitRequest={fitRequest}
             geocodeTarget={geocodeTarget}
           />
