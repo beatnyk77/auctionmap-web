@@ -26,7 +26,7 @@ export interface RiskReason {
 export async function fetchPriceHistory(
   propertyId: string,
 ): Promise<PriceHistoryPoint[]> {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const { data, error } = await supabase
     .from("property_price_history")
     .select("event_id, reserve_price_lakhs, auction_date, scraped_at, event_rank")
@@ -40,7 +40,7 @@ export async function fetchPriceHistory(
 export async function fetchPriceSignals(
   propertyId: string,
 ): Promise<PriceSignals | null> {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const { data, error } = await supabase
     .from("property_price_signals")
     .select("*")
@@ -150,7 +150,7 @@ export function circleRateDiscount(
 }
 
 export async function fetchWeeklyBrief(): Promise<Record<string, unknown>> {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const { data, error } = await supabase.rpc("weekly_brief_stats");
   if (error) throw new Error(error.message);
   return (data ?? {}) as Record<string, unknown>;
@@ -160,7 +160,7 @@ export async function subscribeAlert(
   email: string,
   filters: Record<string, unknown>,
 ): Promise<string> {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const { data, error } = await supabase.rpc("subscribe_alert", {
     p_email: email,
     p_filters: filters,

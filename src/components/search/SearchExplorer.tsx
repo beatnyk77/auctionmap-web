@@ -9,12 +9,18 @@ import type { ListingFilters, ListingPublic } from "@/lib/types";
 import { formatDate, formatLakhs, formatSqftRate, cn } from "@/lib/utils";
 import Link from "next/link";
 import { RiskBadge } from "@/components/listings/RiskBadge";
+import { SaveSearchButton } from "@/components/workflow/SaveSearchButton";
+import { ExportButton } from "@/components/workflow/ExportButton";
 
 interface SearchExplorerProps {
   initialListings: ListingPublic[];
+  isAuthenticated?: boolean;
 }
 
-export function SearchExplorer({ initialListings }: SearchExplorerProps) {
+export function SearchExplorer({
+  initialListings,
+  isAuthenticated = false,
+}: SearchExplorerProps) {
   const [listings, setListings] = useState(initialListings);
   const [filters, setFilters] = useState<ListingFilters>({});
   const [view, setView] = useState<"cards" | "table">("cards");
@@ -51,7 +57,10 @@ export function SearchExplorer({ initialListings }: SearchExplorerProps) {
             {sorted.length} bank auction properties with coordinates
           </p>
         </div>
-        <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <SaveSearchButton filters={filters} isAuthenticated={isAuthenticated} />
+          <ExportButton filters={filters} isAuthenticated={isAuthenticated} />
+          <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
           <button
             type="button"
             aria-label="Card view"
@@ -74,6 +83,7 @@ export function SearchExplorer({ initialListings }: SearchExplorerProps) {
           >
             <List className="h-4 w-4" />
           </button>
+          </div>
         </div>
       </div>
 

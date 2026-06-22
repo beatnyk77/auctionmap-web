@@ -32,7 +32,7 @@ export async function fetchListingsInBbox(
   filters: ListingFilters = {},
   limit = 500,
 ): Promise<ListingPublic[]> {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
 
   const { data, error } = await supabase.rpc("listings_in_bbox", {
     min_lng: bbox.minLng,
@@ -51,7 +51,7 @@ export async function fetchListingsInBbox(
 export async function fetchListingDetail(
   propertyId: string,
 ): Promise<ListingDetail | null> {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
 
   const { data, error } = await supabase
     .from("listing_detail_public")

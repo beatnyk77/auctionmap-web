@@ -20,6 +20,13 @@ import { RiskDetailPanel } from "@/components/intelligence/RiskDetailPanel";
 import { PriceHistoryChart } from "@/components/intelligence/PriceHistoryChart";
 import { CircleRateBadge } from "@/components/intelligence/CircleRateBadge";
 import { formatDate, formatLakhs, formatSqftRate } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth";
+import {
+  fetchPipelineDealForProperty,
+  fetchPropertyNote,
+} from "@/lib/workflow";
+import { AddToPipelineButton } from "@/components/workflow/AddToPipelineButton";
+import { PropertyNotes } from "@/components/workflow/PropertyNotes";
 
 export const dynamic = "force-dynamic";
 
@@ -33,9 +40,12 @@ export default async function PropertyPage({
 
   if (!listing) notFound();
 
-  const [history, signals] = await Promise.all([
+  const user = await getSessionUser();
+  const [history, signals, note, pipelineDeal] = await Promise.all([
     fetchPriceHistory(id).catch(() => []),
     fetchPriceSignals(id).catch(() => null),
+    user ? fetchPropertyNote(id).catch(() => null) : Promise.resolve(null),
+    user ? fetchPipelineDealForProperty(id).catch(() => null) : Promise.resolve(null),
   ]);
 
   const riskReasons = deriveRiskReasons(listing);
@@ -72,6 +82,11 @@ export default async function PropertyPage({
           <div className="flex flex-wrap items-center gap-2">
             <RiskBadge tier={listing.risk_tier} />
             {circleDiscount != null && <CircleRateBadge discountPct={circleDiscount} />}
+            <AddToPipelineButton
+              propertyId={id}
+              isAuthenticated={!!user}
+              initialInPipeline={!!pipelineDeal}
+            />
           </div>
         </div>
 
@@ -127,6 +142,14 @@ export default async function PropertyPage({
             ))}
           </div>
         )}
+
+        <div className="mb-6">
+          <PropertyNotes
+            propertyId={id}
+            initialBody={note?.body ?? ""}
+            isAuthenticated={!!user}
+          />
+        </div>
 
         {listing.analyst_notes && (
           <div className="mb-6 rounded-xl bg-slate-50 p-4">
